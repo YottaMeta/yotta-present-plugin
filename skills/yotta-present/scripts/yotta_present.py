@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -133,6 +133,10 @@ DICT_KEYS = ("chart_data",)
 
 class PresentError(Exception):
     """内容校验 / 渲染错误（CLI 退出码 2，MCP isError）。"""
+
+    def __init__(self, message, hint=None):
+        super().__init__(message)
+        self.hint = hint
 
 
 # ---------------------------------------------------------------------------
@@ -235,18 +239,18 @@ def normalize_content(raw, title_override=None):
     elif isinstance(raw, str):
         s = raw.strip()
         if not s:
-            raise PresentError("内容为空")
+            raise PresentError("内容为空", hint="请提供要呈现的内容：--content 内容、--file 路径，或通过 stdin 传入。")
         if s[0] in "[{":
             try:
                 data = json.loads(s)
             except json.JSONDecodeError as e:
-                raise PresentError("JSON 解析失败：%s" % e)
+                raise PresentError("JSON 解析失败：%s" % e, hint="请检查 JSON 格式（引号、逗号、括号是否完整）；可先用 JSON 校验工具验证。")
             if not isinstance(data, dict):
-                raise PresentError("JSON 顶层必须是对象（标准内容对象）")
+                raise PresentError("JSON 顶层必须是对象（标准内容对象）", hint="请传 {title, bullets, metrics, rows, ...} 标准内容对象，或直接传一段 Markdown/纯文本让元呈自动美化。")
         else:
             data = _parse_text(raw)
     else:
-        raise PresentError("不支持的输入类型：%s" % type(raw).__name__)
+        raise PresentError("不支持的输入类型：%s" % type(raw).__name__, hint="请传 JSON 字符串、Markdown 文本、纯文本或文件路径。")
 
     if title_override is not None:
         data["title"] = str(title_override)
@@ -258,7 +262,7 @@ def normalize_content(raw, title_override=None):
         if k not in data or data[k] is None:
             continue
         if not isinstance(data[k], list):
-            raise PresentError("%s 必须是数组" % k)
+            raise PresentError("%s 必须是数组" % k, hint="该字段应为数组（列表），例如 [a, b]；请检查数据类型。")
         if k == "metrics":
             data[k] = _norm_metrics(data[k])
         elif k == "rows":
@@ -266,7 +270,7 @@ def normalize_content(raw, title_override=None):
         else:
             data[k] = _norm_scalar_list(k, data[k])
     if data.get("chart_data") is not None and not isinstance(data.get("chart_data"), dict):
-        raise PresentError("chart_data 必须是对象")
+        raise PresentError("chart_data 必须是对象", hint="请传图表数据对象，如 {chart: bar, labels: [...], data: [...]}；或去掉 chart_data 用其它形态。")
     return data
 
 
@@ -327,7 +331,7 @@ def decide_form(content):
     if f:
         f = str(f).strip().lower()
         if f not in FORMS:
-            raise PresentError("未知形态：%s（可选：%s）" % (f, ", ".join(FORMS)))
+            raise PresentError("未知形态：%s（可选：%s）" % (f, ", ".join(FORMS)), hint="请从可选形态中选择，或去掉 --form 让元呈自动判断。")
         return f, ["用户显式指定 form=%s" % f]
 
     if content.get("chart_data"):
@@ -996,7 +1000,7 @@ def _render_template_md(key, content, platform="webchat"):
     """按模板 structure 渲染 Markdown（缺 source 的块跳过）。"""
     tpl = TEMPLATES.get(key)
     if not tpl:
-        raise PresentError("未知模板：%s（可选：%s）" % (key, ", ".join(sorted(TEMPLATES))))
+        raise PresentError("未知模板：%s（可选：%s）" % (key, ", ".join(sorted(TEMPLATES))), hint="请从可选模板中选择，或改用 --form 直接指定形态。")
     sec = []
     if content.get("title"):
         sec.append(_h(1, _maybe_bold("title", content["title"], content, platform), platform))
@@ -1059,7 +1063,7 @@ def _render_template_text(key, content):
     """模板纯文本渲染（无 Markdown 符号）。"""
     tpl = TEMPLATES.get(key)
     if not tpl:
-        raise PresentError("未知模板：%s（可选：%s）" % (key, ", ".join(sorted(TEMPLATES))))
+        raise PresentError("未知模板：%s（可选：%s）" % (key, ", ".join(sorted(TEMPLATES))), hint="请从可选模板中选择，或改用 --form 直接指定形态。")
     sec = []
     if content.get("title"):
         sec.append(content["title"])
@@ -1180,7 +1184,7 @@ def _render_chart(cd, svg_out=None):
     try:
         r = yc.render(str(ctype), params)
     except Exception as e:  # noqa: BLE001
-        raise PresentError("图表渲染失败：%s" % e)
+        raise PresentError("图表渲染失败：%s" % e, hint="请检查 chart_data 的 chart 类型与数据是否完整（labels/data 长度一致）。")
     return {
         "chart": r.get("chart") or str(ctype),
         "title": cd.get("title") or "",
@@ -1206,12 +1210,12 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     返回: {form, markdown, text, explain?, chart?, warnings?}
     """
     if platform not in PLATFORMS:
-        raise PresentError("未知平台：%s（可选：%s）" % (platform, ", ".join(PLATFORMS)))
+        raise PresentError("未知平台：%s（可选：%s）" % (platform, ", ".join(PLATFORMS)), hint="请从可选平台中选择：webchat / discord / whatsapp / plain。")
     content = normalize_content(raw, title_override=title)
     if template is not None:
         tpl_key = str(template).strip().lower()
         if tpl_key not in TEMPLATES:
-            raise PresentError("未知模板：%s（可选：%s）" % (tpl_key, ", ".join(sorted(TEMPLATES))))
+            raise PresentError("未知模板：%s（可选：%s）" % (tpl_key, ", ".join(sorted(TEMPLATES))), hint="请从可选模板中选择，或改用 --form 直接指定形态。")
         f = tpl_key
         reasons = ["用户显式指定 template=%s" % tpl_key]
         md = _render_template_md(tpl_key, content, platform=platform)
@@ -1221,14 +1225,14 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
         if form is not None:
             f = str(form).strip().lower()
             if f not in FORMS:
-                raise PresentError("未知形态：%s（可选：%s）" % (f, ", ".join(FORMS)))
+                raise PresentError("未知形态：%s（可选：%s）" % (f, ", ".join(FORMS)), hint="请从可选形态中选择，或去掉 --form 让元呈自动判断。")
             reasons = ["用户显式指定 form=%s" % f]
         else:
             f, reasons = decide_form(content)
 
         if f == "chart":
             if not content.get("chart_data"):
-                raise PresentError("形态 chart 需要 chart_data 字段")
+                raise PresentError("形态 chart 需要 chart_data 字段", hint="请传 chart_data（如 {chart: pie, labels: [...], data: [...]}），或用 --form 指定其它形态。")
             chart = _render_chart(content["chart_data"], svg_out=svg_out)
             md = _render_chart_md(content, chart, prefer_path=bool(svg_out), platform=platform)
             text = _render_chart_text(content, chart)
@@ -1255,13 +1259,13 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
             result = {"form": f, "markdown": _render_report_md(content, platform),
                       "text": _render_report_text(content)}
         else:
-            raise PresentError("未实现的形态：%s" % f)
+            raise PresentError("未实现的形态：%s" % f, hint="该形态当前不可用，请从可选形态中选择。")
 
     if max_len is not None:
         try:
             ml = int(max_len)
         except (TypeError, ValueError):
-            raise PresentError("max_len 必须是正整数（当前：%s）" % max_len)
+            raise PresentError("max_len 必须是正整数（当前：%s）" % max_len, hint="max_len 是输出长度上限（字符数），请传正整数。")
         result["markdown"] = _enforce_max_len(result["markdown"], ml)
         result["text"] = _enforce_max_len(result["text"], ml)
 
@@ -1318,7 +1322,7 @@ def _read_input(args):
         try:
             return _read_utf8(args.file)
         except OSError as e:
-            raise PresentError("无法读取文件：%s" % e)
+            raise PresentError("无法读取文件：%s" % e, hint="请检查文件路径是否存在、是否有读取权限；Windows 可用正斜杠路径。")
     if args.content is not None:
         return args.content
     if not sys.stdin.isatty():
@@ -1354,6 +1358,15 @@ def _write_out(args, result):
         print("已写入：%s" % p)
 
 
+def _friendly_error(e):
+    """错误输出：人话 + 修复建议。"""
+    msg = "错误：%s" % e
+    hint = getattr(e, "hint", None)
+    if hint:
+        msg += "\n修复建议：%s" % hint
+    return msg
+
+
 def cli(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
@@ -1376,7 +1389,7 @@ def cli(argv=None):
     try:
         raw = _read_input(args)
     except PresentError as e:
-        print("错误：%s" % e, file=sys.stderr)
+        print(_friendly_error(e), file=sys.stderr)
         return 1
     if raw is None or (isinstance(raw, str) and not raw.strip()):
         parser.print_help()
@@ -1387,14 +1400,14 @@ def cli(argv=None):
                          svg_out=args.svg, explain=args.explain,
                          platform=args.platform, template=args.template, max_len=args.max_len)
     except PresentError as e:
-        print("错误：%s" % e, file=sys.stderr)
+        print(_friendly_error(e), file=sys.stderr)
         return 2
     except ValueError as e:
-        print("错误：%s" % e, file=sys.stderr)
+        print(_friendly_error(e), file=sys.stderr)
         return 2
 
     if args.svg and result["form"] != "chart":
-        print("错误：--svg 仅在图表形态下有效（当前形态：%s，可加 --form chart）"
+        print("错误：--svg 仅在图表形态下有效（当前形态：%s，可加 --form chart）\n修复建议：图表形态用 --form chart，或去掉 --svg 走默认 Markdown 输出。"
               % result["form"], file=sys.stderr)
         return 2
 
@@ -1405,7 +1418,7 @@ def cli(argv=None):
         try:
             _write_out(args, result)
         except OSError as e:
-            print("错误：写入失败：%s" % e, file=sys.stderr)
+            print("错误：写入失败：%s\n修复建议：请检查输出路径是否存在、目录是否可写。" % e, file=sys.stderr)
             return 2
         return 0
 

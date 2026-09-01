@@ -1,6 +1,6 @@
 ---
 name: yotta-present
-version: 0.2.0
+version: 0.2.1
 description: 元呈 —— AI 输出的默认呈现层：智能体先把输出内容判为「内容类型」，再选「呈现形态」（结论卡/表格/正文/指标板/问答卡/报告/图表…），用 yotta_present CLI 或 present_result MCP 统一渲染成可复制的 Markdown / 纯文本（按需附本地 SVG）。平台自适应（--platform / platform）：webchat 完整 Markdown、discord/whatsapp 表格转列表+标题转加粗、plain 去符号；命名场景模板（vuln_report/faq/status，references/templates.json 可热更新）一次定义多处复用；codeblock + bold_keys 加粗 + max_len 长度熔断。触发：默认——凡交付给用户的 AI 输出都经元呈（判型 → 选形态 → 渲染）呈现；例外见正文白名单。边界：不做交互式图表编辑器 / BI / 数据分析工具；图表只是呈现形态之一；不做内容改写 / 判断本身。AI 首次使用自动接入 yotta-present MCP（写 mcpServers + 永久记忆护栏，均需用户明确同意），输出默认统一呈现、未加载时降级 CLI。
 license: MIT
 metadata:
@@ -190,6 +190,15 @@ python3 scripts/yotta_present.py --version
 3. **已安装** → 把元呈渲染后的 prose 文本交给它去味，再交给用户。
 4. **未安装** → 提示用户：这是可选增强，如需去味可安装，命令：`npx -y @yottameta/yotta-humanize --agent <agent-name>`（或见其 README 的 git clone / ZIP / install.sh）；**不要替用户强制安装，不要默认它已存在**；用户装好后 AI 再使用。
 
+
+## 常见问题 FAQ（速查）
+
+常见报错与避坑见 `references/faq.md`：
+- 想带徽章 / 裁决 → 用标准内容对象 JSON（`{title, grade, verdict, bullets}`），纯文本无法提取徽章；
+- 表格列名 → 用 `rows` 对象列表键或二维数组 + `headers`（`columns` 不支持）；
+- 图表 → 必须传 `chart_data`（`{chart, labels, data}`）；`--svg` 仅图表形态有效；
+- 形态不对 → 显式 `--form` 指定，或 `--explain` 看判断理由；
+- MCP 未加载 → 检查 mcpServers 并重启会话，否则自动降级 CLI（输出一致）。
 
 ## 边界
 
