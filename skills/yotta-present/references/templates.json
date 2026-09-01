@@ -1,0 +1,89 @@
+{
+  "vuln_report": {
+    "title": "漏洞报告",
+    "structure": [
+      {
+        "type": "heading",
+        "level": 2,
+        "text": "概述"
+      },
+      {
+        "type": "summary",
+        "source": [
+          "verdict",
+          "headline"
+        ]
+      },
+      {
+        "type": "table",
+        "source": "rows",
+        "label": "等级与指纹"
+      },
+      {
+        "type": "list",
+        "source": "steps",
+        "style": "ordered",
+        "label": "复现步骤"
+      },
+      {
+        "type": "codeblock",
+        "source": "code",
+        "lang": "http",
+        "label": "请求样本"
+      },
+      {
+        "type": "list",
+        "source": "impact",
+        "style": "bulleted",
+        "label": "危害分析"
+      },
+      {
+        "type": "list",
+        "source": "fixes",
+        "style": "ordered",
+        "label": "修复建议"
+      }
+    ],
+    "platform": {
+      "webchat": "full",
+      "discord": "downgrade",
+      "whatsapp": "downgrade",
+      "default": "full"
+    }
+  },
+  "faq": {
+    "title": "问答",
+    "structure": [
+      {
+        "type": "summary",
+        "source": [
+          "headline",
+          "verdict"
+        ]
+      },
+      {
+        "type": "qa",
+        "source": "rows",
+        "label": "问答"
+      }
+    ],
+    "platform": {
+      "default": "full"
+    }
+  },
+  "status": {
+    "title": "状态一句话",
+    "structure": [
+      {
+        "type": "plain",
+        "source": [
+          "headline",
+          "verdict"
+        ]
+      }
+    ],
+    "platform": {
+      "default": "plain"
+    }
+  }
+}
