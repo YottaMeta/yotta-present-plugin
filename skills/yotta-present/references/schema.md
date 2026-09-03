@@ -137,15 +137,22 @@ waterfall / word_cloud / sankey / spreadsheet / treemap）。
 {"title": "趋势", "chart_data": {"chart": "pie", "labels": ["A", "B"], "data": [3, 1]}}
 ```
 
-## 平台自适应（platform）
+## 渲染通道与平台（channel × platform）
 
-`--platform`（CLI）/ `platform`（MCP），默认 `webchat`。
+`channel`（CLI `--channel` / MCP `channel`，默认 `auto`）定「载体族」；`platform`（CLI `--platform` / MCP `platform`，默认 `webchat`）定「族内降级」。
 
-| platform | 行为 |
+| channel | 载体 | 说明 |
+|---|---|---|
+| `auto`（默认） | — | 按 platform 自动映射：`plain` → `r0`；`webchat` / `discord` / `whatsapp` → `r1` |
+| `r0` | 基础 Markdown / 纯文本 | 保底无色：无 emoji 徽章（文字徽章仍在，如「危险」） |
+| `r1` | Markdown | emoji 增强：🟢🟡🔴⚪ 徽章 + 引用条 + 分隔线（默认） |
+| `r2` / `r3` | — | 富文本 HTML / SVG 整卡（高级美化引擎，收费侧后续版本；显式指定提示未开放） |
+
+| platform | 族内降级 |
 |---|---|
 | `webchat` | 完整 Markdown（标题 / 表格 / 代码块全支持，默认） |
 | `discord` / `whatsapp` | 禁表格、禁大标题 → 表格自动转列表、标题转加粗；代码块保留 |
-| `plain` | 命令行 / 纯文本：保留分点与逻辑顺序，去 Markdown 符号（# / ** / > / 表格竖线） |
+| `plain` | 命令行 / 纯文本：保留分点与逻辑顺序，去 Markdown 符号（# / ** / > / 表格竖线）；自动 r0 去 emoji |
 
 ## 命名场景模板（template）
 

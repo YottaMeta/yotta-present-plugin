@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -60,6 +60,18 @@ PLATFORM_DESC = {
     "whatsapp": "WhatsApp：禁表格、禁大标题 → 表格转列表、标题转加粗",
     "plain": "命令行/纯文本：保留分点与逻辑顺序，去 Markdown 符号",
 }
+
+# 渲染通道（R0-R3，D1/D3/D4 落地；M1 实现 R0/R1，R2/R3 收费侧后续版本）
+CHANNELS = ["auto", "r0", "r1", "r2", "r3"]
+CHANNEL_DESC = {
+    "auto": "按 platform 自动映射：plain → r0，webchat/discord/whatsapp → r1",
+    "r0": "保底通道：基础 Markdown / 纯文本，无色（无 emoji 徽章）",
+    "r1": "增强通道：emoji 徽章 + 引用条 + 分隔线（假色，开源）",
+    "r2": "富文本 HTML 通道（高级美化引擎，收费侧后续版本）",
+    "r3": "SVG 卡片图通道（高级美化引擎，收费侧后续版本）",
+}
+PLATFORM_TO_CHANNEL = {"webchat": "r1", "discord": "r1", "whatsapp": "r1", "plain": "r0"}
+
 TEMPLATES = {
     "vuln_report": {
         "title": "漏洞报告",
@@ -526,6 +538,53 @@ def _grade_badge(grade):
     return (None, str(grade))
 
 
+def _resolve_channel(platform, channel):
+    """channel×platform 映射（D4）：auto 按 platform 保守落 r0/r1；r2/r3 当前未开放。"""
+    if channel in (None, "", "auto"):
+        return PLATFORM_TO_CHANNEL.get(platform, "r1")
+    ch = str(channel).strip().lower()
+    if ch not in CHANNELS:
+        raise PresentError("未知通道：%s（可选：%s）" % (ch, ", ".join(CHANNELS)),
+                           hint="channel 是载体族（auto/r0/r1/r2/r3）；一般用默认 auto，由 platform 自动映射即可。")
+    if ch in ("r2", "r3"):
+        raise PresentError("通道 %s 尚未开放：%s（属高级美化引擎，收费侧后续版本）" % (ch, CHANNEL_DESC[ch]),
+                           hint="当前版本提供 R0（保底无色）/ R1（emoji 增强）两条开源通道；R2/R3 是富文本 HTML / SVG 整卡通道，计划在后续版本推出。")
+    return ch
+
+
+def _grade_chip_md(content, platform, channel):
+    """grade 徽章行内片段：r1 = emoji + 文案；r0 = 仅文案（无色）。无 grade → 空串。"""
+    badge = _grade_badge(content.get("grade"))
+    if not badge or not badge[1]:
+        return ""
+    if channel == "r0" or not badge[0]:
+        return _bold(badge[1], platform)
+    return "%s %s" % (badge[0], _bold(badge[1], platform))
+
+
+def _summary_parts(content, platform, channel):
+    """统一摘要条部件：grade chip + verdict + headline（按通道控 emoji）。"""
+    parts = []
+    chip = _grade_chip_md(content, platform, channel)
+    if chip:
+        parts.append(chip)
+    verdict = content.get("verdict")
+    if verdict:
+        parts.append(_maybe_bold("verdict", verdict, content, platform))
+    headline = content.get("headline")
+    if headline and headline != verdict:
+        parts.append(_maybe_bold("headline", headline, content, platform))
+    return parts
+
+
+def _summary_bar_md(content, platform, channel):
+    """统一引用条（R1 规范）：grade chip + verdict + headline 合成一条 blockquote；无内容返回 None。"""
+    parts = _summary_parts(content, platform, channel)
+    if not parts:
+        return None
+    return _quote(" — ".join(parts), platform)
+
+
 def _metrics_rows(metrics):
     rows = []
     for m in metrics:
@@ -547,26 +606,13 @@ def _metrics_rows(metrics):
 # 各形态渲染
 # ---------------------------------------------------------------------------
 
-def _render_conclusion_md(c, platform="webchat"):
+def _render_conclusion_md(c, platform="webchat", channel="r1"):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
-    badge = _grade_badge(c.get("grade"))
-    verdict = c.get("verdict")
-    headline = c.get("headline")
-    parts = []
-    if badge and badge[0]:
-        parts.append("%s %s" % (badge[0], _bold(badge[1], platform)))
-    elif badge and badge[1]:
-        parts.append(_bold(badge[1], platform))
-    if verdict:
-        parts.append(_maybe_bold("verdict", verdict, c, platform))
-    if headline and headline != verdict:
-        parts.append(_maybe_bold("headline", headline, c, platform))
-    if parts:
-        sec.append(_quote(" — ".join(parts), platform))
-    elif headline:
-        sec.append(_quote(headline, platform))
+    bar = _summary_bar_md(c, platform, channel)
+    if bar:
+        sec.append(bar)
     if c.get("metrics"):
         sec.append(_bold("关键指标", platform))
         sec.append(_md_table(["指标", "数值"], _metrics_rows(c["metrics"]), platform))
@@ -644,13 +690,17 @@ def _table_parts(c):
     return headers, data
 
 
-def _render_table_md(c, platform="webchat"):
+def _render_table_md(c, platform="webchat", channel="r1"):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
+    bar = _summary_bar_md(c, platform, channel)
+    if bar:
+        sec.append(bar)
     headers, data = _table_parts(c)
     sec.append(_md_table(headers, data, platform))
     if c.get("notes"):
+        sec.append("---")
         sec.append(_md_notes(c["notes"], platform))
     return "\n\n".join(sec)
 
@@ -666,12 +716,13 @@ def _render_table_text(c):
     return "\n\n".join(sec)
 
 
-def _render_checklist_md(c, platform="webchat"):
+def _render_checklist_md(c, platform="webchat", channel="r1"):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
-    if c.get("headline"):
-        sec.append(_quote(_maybe_bold("headline", c["headline"], c, platform), platform))
+    bar = _summary_bar_md(c, platform, channel)
+    if bar:
+        sec.append(bar)
     if c.get("bullets"):
         sec.append(_md_bullets(c["bullets"], platform))
     if c.get("notes"):
@@ -694,12 +745,13 @@ def _render_checklist_text(c):
     return "\n\n".join(sec)
 
 
-def _render_prose_md(c, platform="webchat"):
+def _render_prose_md(c, platform="webchat", channel="r1"):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
-    if c.get("headline"):
-        sec.append(_quote(_maybe_bold("headline", c["headline"], c, platform), platform))
+    bar = _summary_bar_md(c, platform, channel)
+    if bar:
+        sec.append(bar)
     if c.get("body"):
         sec.append(_md_body(c["body"]))
     if c.get("bullets"):
@@ -728,14 +780,15 @@ def _render_prose_text(c):
     return "\n\n".join(sec)
 
 
-def _render_metrics_md(c, platform="webchat"):
+def _render_metrics_md(c, platform="webchat", channel="r1"):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
+    bar = _summary_bar_md(c, platform, channel)
+    if bar:
+        sec.append(bar)
     sec.append(_bold("关键指标", platform))
     sec.append(_md_table(["指标", "数值"], _metrics_rows(c["metrics"]), platform))
-    if c.get("headline"):
-        sec.append(_quote(_maybe_bold("headline", c["headline"], c, platform), platform))
     if c.get("notes"):
         sec.append("---")
         sec.append(_md_notes(c["notes"], platform))
@@ -822,10 +875,13 @@ def _pairs_from_bullets(bullets):
     return pairs
 
 
-def _render_qa_md(c, platform="webchat"):
+def _render_qa_md(c, platform="webchat", channel="r1"):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
+    bar = _summary_bar_md(c, platform, channel)
+    if bar:
+        sec.append(bar)
     for q, a in _parse_qa(c):
         sec.append(_bold("问：%s" % q, platform))
         sec.append("答：%s" % a)
@@ -859,11 +915,12 @@ def _report_sections(c):
     ]
 
 
-def _render_report_md(c, platform="webchat"):
+def _render_report_md(c, platform="webchat", channel="r1"):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
-    if c.get("headline"):
+    # 顶部引用条：report 的 grade/verdict 在「摘要」节呈现，顶部仅无 grade/verdict 时给 headline，避免重复
+    if c.get("headline") and not (c.get("grade") or c.get("verdict")):
         sec.append(_quote(_maybe_bold("headline", c["headline"], c, platform), platform))
     sections = [t for t, on in _report_sections(c) if on]
     if sections:
@@ -876,10 +933,11 @@ def _render_report_md(c, platform="webchat"):
         sec.append(_h(2, t, platform))
         if t == "摘要":
             parts = []
-            if badge and badge[0]:
-                parts.append("%s %s" % (badge[0], _bold(badge[1], platform)))
-            elif badge and badge[1]:
-                parts.append(_bold(badge[1], platform))
+            if badge and badge[1]:
+                if channel == "r0" or not badge[0]:
+                    parts.append(_bold(badge[1], platform))
+                else:
+                    parts.append("%s %s" % (badge[0], _bold(badge[1], platform)))
             if c.get("verdict"):
                 parts.append(_maybe_bold("verdict", c["verdict"], c, platform))
             if parts:
@@ -996,7 +1054,7 @@ def _tpl_source(content, source):
     return content.get(source)
 
 
-def _render_template_md(key, content, platform="webchat"):
+def _render_template_md(key, content, platform="webchat", channel="r1"):
     """按模板 structure 渲染 Markdown（缺 source 的块跳过）。"""
     tpl = TEMPLATES.get(key)
     if not tpl:
@@ -1015,10 +1073,11 @@ def _render_template_md(key, content, platform="webchat"):
             if val:
                 parts = []
                 badge = _grade_badge(content.get("grade"))
-                if badge and badge[0]:
-                    parts.append("%s %s" % (badge[0], _bold(badge[1], platform)))
-                elif badge and badge[1]:
-                    parts.append(_bold(badge[1], platform))
+                if badge and badge[1]:
+                    if channel == "r0" or not badge[0]:
+                        parts.append(_bold(badge[1], platform))
+                    else:
+                        parts.append("%s %s" % (badge[0], _bold(badge[1], platform)))
                 parts.append(_maybe_bold(str(src[0] if isinstance(src, (list, tuple)) else src), val, content, platform))
                 sec.append(_quote(" — ".join(parts), platform))
         elif btype == "table":
@@ -1196,7 +1255,7 @@ def _render_chart(cd, svg_out=None):
 
 
 def present(raw, form=None, title=None, svg_out=None, explain=False,
-            platform="webchat", template=None, max_len=None):
+            platform="webchat", channel="auto", template=None, max_len=None):
     """呈现核心入口。
 
     raw: dict / JSON 字符串 / 纯文本
@@ -1205,12 +1264,16 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     svg_out: 图表形态的本地 SVG 输出路径（可选）
     explain: 附判断说明（可选）
     platform: 平台自适应（webchat/discord/whatsapp/plain，默认 webchat）
+    channel: 渲染通道（auto/r0/r1/r2/r3，默认 auto 按 platform 自动映射：
+             plain → r0 保底无色，webchat/discord/whatsapp → r1 emoji 增强；
+             r2/r3 高级美化通道当前未开放）
     template: 命名场景模板 key（vuln_report/faq/status，可选；优先于 form）
     max_len: 长度熔断上限（字符数，可选）
-    返回: {form, markdown, text, explain?, chart?, warnings?}
+    返回: {form, channel, markdown, text, explain?, chart?, warnings?}
     """
     if platform not in PLATFORMS:
         raise PresentError("未知平台：%s（可选：%s）" % (platform, ", ".join(PLATFORMS)), hint="请从可选平台中选择：webchat / discord / whatsapp / plain。")
+    eff_channel = _resolve_channel(platform, channel)
     content = normalize_content(raw, title_override=title)
     if template is not None:
         tpl_key = str(template).strip().lower()
@@ -1218,7 +1281,7 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
             raise PresentError("未知模板：%s（可选：%s）" % (tpl_key, ", ".join(sorted(TEMPLATES))), hint="请从可选模板中选择，或改用 --form 直接指定形态。")
         f = tpl_key
         reasons = ["用户显式指定 template=%s" % tpl_key]
-        md = _render_template_md(tpl_key, content, platform=platform)
+        md = _render_template_md(tpl_key, content, platform=platform, channel=eff_channel)
         text = _render_template_text(tpl_key, content)
         result = {"form": f, "markdown": md, "text": text}
     else:
@@ -1238,29 +1301,30 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
             text = _render_chart_text(content, chart)
             result = {"form": f, "markdown": md, "text": text, "chart": chart}
         elif f == "conclusion":
-            result = {"form": f, "markdown": _render_conclusion_md(content, platform),
+            result = {"form": f, "markdown": _render_conclusion_md(content, platform, channel=eff_channel),
                       "text": _render_conclusion_text(content)}
         elif f == "table":
-            result = {"form": f, "markdown": _render_table_md(content, platform),
+            result = {"form": f, "markdown": _render_table_md(content, platform, channel=eff_channel),
                       "text": _render_table_text(content)}
         elif f == "checklist":
-            result = {"form": f, "markdown": _render_checklist_md(content, platform),
+            result = {"form": f, "markdown": _render_checklist_md(content, platform, channel=eff_channel),
                       "text": _render_checklist_text(content)}
         elif f == "prose":
-            result = {"form": f, "markdown": _render_prose_md(content, platform),
+            result = {"form": f, "markdown": _render_prose_md(content, platform, channel=eff_channel),
                       "text": _render_prose_text(content)}
         elif f == "metrics":
-            result = {"form": f, "markdown": _render_metrics_md(content, platform),
+            result = {"form": f, "markdown": _render_metrics_md(content, platform, channel=eff_channel),
                       "text": _render_metrics_text(content)}
         elif f == "qa":
-            result = {"form": f, "markdown": _render_qa_md(content, platform),
+            result = {"form": f, "markdown": _render_qa_md(content, platform, channel=eff_channel),
                       "text": _render_qa_text(content)}
         elif f == "report":
-            result = {"form": f, "markdown": _render_report_md(content, platform),
+            result = {"form": f, "markdown": _render_report_md(content, platform, channel=eff_channel),
                       "text": _render_report_text(content)}
         else:
             raise PresentError("未实现的形态：%s" % f, hint="该形态当前不可用，请从可选形态中选择。")
 
+    result["channel"] = eff_channel
     if max_len is not None:
         try:
             ml = int(max_len)
@@ -1301,6 +1365,8 @@ def _build_parser():
     p.add_argument("--template", metavar="KEY", help="命名场景模板：vuln_report/faq/status（优先于 --form）")
     p.add_argument("--platform", choices=PLATFORMS, default="webchat",
                    help="平台自适应：webchat/discord/whatsapp/plain（默认 webchat）")
+    p.add_argument("--channel", choices=CHANNELS, default="auto",
+                   help="渲染通道（默认 auto，按 platform 自动映射）：r0 保底无色（无 emoji）/ r1 emoji 增强；r2/r3 高级美化通道当前未开放")
     p.add_argument("--max-len", metavar="N", type=int, help="长度熔断上限（字符数，可选）")
     p.add_argument("--title", metavar="T", help="覆盖标题")
     g = p.add_mutually_exclusive_group()
@@ -1398,7 +1464,8 @@ def cli(argv=None):
     try:
         result = present(raw, form=args.form, title=args.title,
                          svg_out=args.svg, explain=args.explain,
-                         platform=args.platform, template=args.template, max_len=args.max_len)
+                         platform=args.platform, channel=args.channel,
+                         template=args.template, max_len=args.max_len)
     except PresentError as e:
         print(_friendly_error(e), file=sys.stderr)
         return 2
