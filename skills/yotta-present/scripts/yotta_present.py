@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -61,16 +61,23 @@ PLATFORM_DESC = {
     "plain": "命令行/纯文本：保留分点与逻辑顺序，去 Markdown 符号",
 }
 
-# 渲染通道（R0-R3，D1/D3/D4 落地；M1 实现 R0/R1，R2/R3 收费侧后续版本）
+# 渲染通道（R0-R3，M1 实现 R0/R1，R2/R3 高级美化引擎后续版本推出）
 CHANNELS = ["auto", "r0", "r1", "r2", "r3"]
 CHANNEL_DESC = {
     "auto": "按 platform 自动映射：plain → r0，webchat/discord/whatsapp → r1",
     "r0": "保底通道：基础 Markdown / 纯文本，无色（无 emoji 徽章）",
     "r1": "增强通道：emoji 徽章 + 引用条 + 分隔线（假色，开源）",
-    "r2": "富文本 HTML 通道（高级美化引擎，收费侧后续版本）",
-    "r3": "SVG 卡片图通道（高级美化引擎，收费侧后续版本）",
+    "r2": "富文本 HTML 通道（高级美化引擎，后续版本推出）",
+    "r3": "SVG 卡片图通道（高级美化引擎，后续版本推出）",
 }
 PLATFORM_TO_CHANNEL = {"webchat": "r1", "discord": "r1", "whatsapp": "r1", "plain": "r0"}
+
+# 主题（S7-M2 色板 token 化）：light / dark，供图表 SVG 与后续 R2/R3 通道消费
+THEMES = ["light", "dark"]
+THEME_DESC = {
+    "light": "亮色主题（默认）：白底深字",
+    "dark": "暗色主题：深底浅字（图表 SVG 暗色渲染）",
+}
 
 TEMPLATES = {
     "vuln_report": {
@@ -547,7 +554,7 @@ def _resolve_channel(platform, channel):
         raise PresentError("未知通道：%s（可选：%s）" % (ch, ", ".join(CHANNELS)),
                            hint="channel 是载体族（auto/r0/r1/r2/r3）；一般用默认 auto，由 platform 自动映射即可。")
     if ch in ("r2", "r3"):
-        raise PresentError("通道 %s 尚未开放：%s（属高级美化引擎，收费侧后续版本）" % (ch, CHANNEL_DESC[ch]),
+        raise PresentError("通道 %s 尚未开放：%s（属高级美化引擎，后续版本推出）" % (ch, CHANNEL_DESC[ch]),
                            hint="当前版本提供 R0（保底无色）/ R1（emoji 增强）两条开源通道；R2/R3 是富文本 HTML / SVG 整卡通道，计划在后续版本推出。")
     return ch
 
@@ -1233,10 +1240,12 @@ def _resolve_test_python():
 # 统一入口
 # ---------------------------------------------------------------------------
 
-def _render_chart(cd, svg_out=None):
+def _render_chart(cd, svg_out=None, theme=None):
     """渲染图表（复用 yotta_chart 内核），返回 meta dict。"""
     cd = cd or {}
     params = dict(cd)
+    if theme:
+        params["theme"] = theme
     ctype = params.pop("chart", None) or params.pop("type", None) or "bar"
     if svg_out:
         params["out"] = svg_out
@@ -1255,7 +1264,7 @@ def _render_chart(cd, svg_out=None):
 
 
 def present(raw, form=None, title=None, svg_out=None, explain=False,
-            platform="webchat", channel="auto", template=None, max_len=None):
+            platform="webchat", channel="auto", template=None, max_len=None, theme=None):
     """呈现核心入口。
 
     raw: dict / JSON 字符串 / 纯文本
@@ -1269,11 +1278,16 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
              r2/r3 高级美化通道当前未开放）
     template: 命名场景模板 key（vuln_report/faq/status，可选；优先于 form）
     max_len: 长度熔断上限（字符数，可选）
+    theme: 主题（light/dark，可选；图表 SVG 渲染用，默认 light）
     返回: {form, channel, markdown, text, explain?, chart?, warnings?}
     """
     if platform not in PLATFORMS:
         raise PresentError("未知平台：%s（可选：%s）" % (platform, ", ".join(PLATFORMS)), hint="请从可选平台中选择：webchat / discord / whatsapp / plain。")
     eff_channel = _resolve_channel(platform, channel)
+    if theme is not None and str(theme).strip().lower() not in THEMES:
+        raise PresentError("未知主题：%s（可选：%s）" % (theme, "/".join(THEMES)),
+                           hint="主题用于图表 SVG 渲染：light / dark。其他形态不受主题影响。")
+    theme_low = str(theme).strip().lower() if theme is not None else None
     content = normalize_content(raw, title_override=title)
     if template is not None:
         tpl_key = str(template).strip().lower()
@@ -1296,7 +1310,7 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
         if f == "chart":
             if not content.get("chart_data"):
                 raise PresentError("形态 chart 需要 chart_data 字段", hint="请传 chart_data（如 {chart: pie, labels: [...], data: [...]}），或用 --form 指定其它形态。")
-            chart = _render_chart(content["chart_data"], svg_out=svg_out)
+            chart = _render_chart(content["chart_data"], svg_out=svg_out, theme=theme_low)
             md = _render_chart_md(content, chart, prefer_path=bool(svg_out), platform=platform)
             text = _render_chart_text(content, chart)
             result = {"form": f, "markdown": md, "text": text, "chart": chart}
@@ -1367,6 +1381,8 @@ def _build_parser():
                    help="平台自适应：webchat/discord/whatsapp/plain（默认 webchat）")
     p.add_argument("--channel", choices=CHANNELS, default="auto",
                    help="渲染通道（默认 auto，按 platform 自动映射）：r0 保底无色（无 emoji）/ r1 emoji 增强；r2/r3 高级美化通道当前未开放")
+    p.add_argument("--theme", choices=THEMES, default=None,
+                   help="主题（图表 SVG 用，默认 light）：light 亮色 / dark 暗色")
     p.add_argument("--max-len", metavar="N", type=int, help="长度熔断上限（字符数，可选）")
     p.add_argument("--title", metavar="T", help="覆盖标题")
     g = p.add_mutually_exclusive_group()
@@ -1465,7 +1481,7 @@ def cli(argv=None):
         result = present(raw, form=args.form, title=args.title,
                          svg_out=args.svg, explain=args.explain,
                          platform=args.platform, channel=args.channel,
-                         template=args.template, max_len=args.max_len)
+                         template=args.template, max_len=args.max_len, theme=args.theme)
     except PresentError as e:
         print(_friendly_error(e), file=sys.stderr)
         return 2

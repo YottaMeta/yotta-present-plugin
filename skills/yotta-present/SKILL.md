@@ -1,6 +1,6 @@
 ---
 name: yotta-present
-version: 0.3.0
+version: 0.4.0
 description: 元呈 —— AI 输出的默认呈现层：智能体先把输出内容判为「内容类型」，再选「呈现形态」（结论卡/表格/正文/指标板/问答卡/报告/图表…），用 yotta_present CLI 或 present_result MCP 统一渲染成可复制的 Markdown / 纯文本（按需附本地 SVG）。平台自适应（--platform / platform）：webchat 完整 Markdown、discord/whatsapp 表格转列表+标题转加粗、plain 去符号；渲染通道（--channel / channel）：auto 按 platform 映射 plain→r0 去 emoji、其余→r1 emoji 徽章+引用条（r0 保底无色 / r1 增强，r2/r3 高级美化未开放）；命名场景模板（vuln_report/faq/status，references/templates.json 可热更新）一次定义多处复用；codeblock + bold_keys 加粗 + max_len 长度熔断。触发：默认——凡交付给用户的 AI 输出都经元呈（判型 → 选形态 → 渲染）呈现；例外见正文白名单。边界：不做交互式图表编辑器 / BI / 数据分析工具；图表只是呈现形态之一；不做内容改写 / 判断本身。AI 首次使用自动接入 yotta-present MCP（写 mcpServers + 永久记忆护栏，均需用户明确同意），输出默认统一呈现、未加载时降级 CLI。
 license: MIT
 metadata:
@@ -52,6 +52,8 @@ metadata:
 - 用户明确「一句话 / 给裸文本」
 
 **渲染通道与平台（channel × platform）**：`--channel`（默认 `auto`）定「载体族」、`--platform` 定「族内降级」：`plain` → `r0`（保底无色、无 emoji 徽章），`webchat`/`discord`/`whatsapp` → `r1`（🟢🟡🔴⚪ emoji 徽章 + 引用条 + 分隔线）；`r2`/`r3`（富文本 HTML / SVG 整卡）属高级美化引擎，后续版本开放。想强制无色基础 Markdown（如 GitHub 等 sanitize 宿主）→ `--channel r0`；颜色永不当唯一信息载体（r0 去掉 emoji 后文字徽章仍在）。
+
+**主题（图表 SVG，S7-M2 色板 token 化）**：`--theme`（默认 `light`）→ `dark` 深底浅字暗色渲染；其余形态不受主题影响（Markdown 颜色由 emoji / 文字承载，不做真假色切换）。主题 token 一处定义在 `references/theme.json`（light/dark + 语义色 + 形态主色 + 图表色板，声明式可热更新、社区可贡献）；本地 `python scripts/yotta_chart.py --check-contrast` 可自查 WCAG 对比度（正文/背景 ≥ 4.5:1）。
 
 **形态选择要点**：
 - 结论 / 评分 / 推荐 → `conclusion`
@@ -136,6 +138,8 @@ python3 scripts/yotta_present.py --content '<同上>' --platform plain
 
 # 渲染通道（默认 auto：plain→r0 去 emoji、其余→r1 emoji 增强）；强制无色基础 Markdown
 python3 scripts/yotta_present.py --content '<同上>' --channel r0
+# 主题（图表暗色渲染）：--theme dark（默认 light）
+python3 scripts/yotta_present.py --content '{"chart_data": {"chart": "bar", "labels": ["A", "B"], "data": [3, 5]}}' --form chart --theme dark --svg out/bar-dark.svg
 
 # 命名场景模板：漏洞报告 / 问答 / 状态一句话（一次定义多处复用）
 python3 scripts/yotta_present.py --content '{"title": "漏洞", "grade": "danger", "verdict": "高危", "rows": [["注入点", "POST /demo.php"]], "steps": ["复现步骤"], "code": "POST /demo.php HTTP/1.1", "fixes": ["参数化查询"]}' --template vuln_report
@@ -179,7 +183,7 @@ python3 scripts/yotta_present.py --version
 
 **MCP 工具**：
 
-- `present_result`：`content`（JSON / Markdown / 纯文本）+ 可选 `form` / `template` / `platform` / `max_len` / `bold_keys` / `title` / `output`(md|text|both|json) / `svg` / `explain` → 可复制结果；`form=chart` + `chart_data` 复用 12 图内核（bar / line / pie / radar / scatter / histogram / funnel / waterfall / word_cloud / sankey / spreadsheet / treemap），本地 SVG 或 data URI；`template` 套命名场景模板（vuln_report/faq/status）；`platform` 平台自适应（discord/whatsapp 表格转列表+标题转加粗，plain 去符号）；`channel` 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强；r2/r3 未开放）；`max_len` 长度熔断。
+- `present_result`：`content`（JSON / Markdown / 纯文本）+ 可选 `form` / `template` / `platform` / `max_len` / `bold_keys` / `title` / `output`(md|text|both|json) / `svg` / `explain` → 可复制结果；`form=chart` + `chart_data` 复用 12 图内核（bar / line / pie / radar / scatter / histogram / funnel / waterfall / word_cloud / sankey / spreadsheet / treemap），本地 SVG 或 data URI；`template` 套命名场景模板（vuln_report/faq/status）；`platform` 平台自适应（discord/whatsapp 表格转列表+标题转加粗，plain 去符号）；`channel` 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强；r2/r3 未开放）；`theme` 主题（默认 light；dark 出暗色图表 SVG）；`max_len` 长度熔断。
 - `present_forms`：列出开源基线 8 种形态（只读）。
 - `present_templates`：列出命名场景模板骨架（vuln_report/faq/status，只读）。
 

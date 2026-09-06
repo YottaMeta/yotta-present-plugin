@@ -146,7 +146,7 @@ waterfall / word_cloud / sankey / spreadsheet / treemap）。
 | `auto`（默认） | — | 按 platform 自动映射：`plain` → `r0`；`webchat` / `discord` / `whatsapp` → `r1` |
 | `r0` | 基础 Markdown / 纯文本 | 保底无色：无 emoji 徽章（文字徽章仍在，如「危险」） |
 | `r1` | Markdown | emoji 增强：🟢🟡🔴⚪ 徽章 + 引用条 + 分隔线（默认） |
-| `r2` / `r3` | — | 富文本 HTML / SVG 整卡（高级美化引擎，收费侧后续版本；显式指定提示未开放） |
+| `r2` / `r3` | — | 富文本 HTML / SVG 整卡（高级美化引擎，后续版本推出；显式指定提示未开放） |
 
 | platform | 族内降级 |
 |---|---|

@@ -50,4 +50,4 @@
 `--channel r0`：保底通道，无 emoji 徽章（文字徽章仍在，如「危险」）。`platform=plain` 默认自动就是 r0。
 
 ## 14. `--channel r2 / r3` 报「尚未开放」？
-R2（富文本 HTML）/ R3（SVG 整卡）属高级美化引擎（收费侧），计划后续版本推出；当前开源提供 r0（无色保底）/ r1（emoji 增强）。用默认 auto 即可，或显式 `--channel r0`。
+R2（富文本 HTML）/ R3（SVG 整卡）属高级美化引擎，计划后续版本推出；当前开源提供 r0（无色保底）/ r1（emoji 增强）。用默认 auto 即可，或显式 `--channel r0`。

@@ -1,0 +1,218 @@
+{
+  "meta": {
+    "schema": 1,
+    "brand_primary": "#2F6FED",
+    "default_theme": "light",
+    "note": "S7-M2 色板 token 化：一处定义、全通道消费。语义色名与 GRADE_META 对齐（success/warn/danger/info/neutral），不另造色名。"
+  },
+  "themes": {
+    "light": {
+      "bg": "#ffffff",
+      "surface": "#F8F9FA",
+      "surface_2": "#F1F3F5",
+      "border": "#DEE2E6",
+      "text": "#212529",
+      "label": "#495057",
+      "muted": "#6C757D",
+      "grid": "#EDF2FF",
+      "axis": "#ADB5BD",
+      "edge": "#ffffff",
+      "on_chip": "#ffffff"
+    },
+    "dark": {
+      "bg": "#1E2329",
+      "surface": "#262C33",
+      "surface_2": "#2C333B",
+      "border": "#39414A",
+      "text": "#EDF1F5",
+      "label": "#C9D1D9",
+      "muted": "#9AA4AF",
+      "grid": "#2A3138",
+      "axis": "#4A525C",
+      "edge": "#ffffff",
+      "on_chip": "#ffffff"
+    }
+  },
+  "semantic": {
+    "success": {
+      "light": {
+        "bg": "#1A7F37",
+        "fg": "#ffffff",
+        "text": "#1A7F37"
+      },
+      "dark": {
+        "bg": "#1A7F37",
+        "fg": "#ffffff",
+        "text": "#69DB7C"
+      }
+    },
+    "warn": {
+      "light": {
+        "bg": "#C2410C",
+        "fg": "#ffffff",
+        "text": "#B23A0A"
+      },
+      "dark": {
+        "bg": "#C2410C",
+        "fg": "#ffffff",
+        "text": "#FFA94D"
+      }
+    },
+    "danger": {
+      "light": {
+        "bg": "#C92A2A",
+        "fg": "#ffffff",
+        "text": "#C92A2A"
+      },
+      "dark": {
+        "bg": "#C92A2A",
+        "fg": "#ffffff",
+        "text": "#FF8787"
+      }
+    },
+    "info": {
+      "light": {
+        "bg": "#1971C2",
+        "fg": "#ffffff",
+        "text": "#1971C2"
+      },
+      "dark": {
+        "bg": "#1971C2",
+        "fg": "#ffffff",
+        "text": "#74C0FC"
+      }
+    },
+    "neutral": {
+      "light": {
+        "bg": "#495057",
+        "fg": "#ffffff",
+        "text": "#495057"
+      },
+      "dark": {
+        "bg": "#495057",
+        "fg": "#ffffff",
+        "text": "#ADB5BD"
+      }
+    }
+  },
+  "form_accent": {
+    "conclusion": "#2F6FED",
+    "table": "#495057",
+    "checklist": "#2B8A3E",
+    "prose": "#2F6FED",
+    "metrics": "#2F6FED",
+    "qa": "#1971C2",
+    "report": "#2F6FED",
+    "chart": "#2F6FED"
+  },
+  "chart_palettes": {
+    "light": {
+      "default": [
+        "#2F6FED",
+        "#22B8A6",
+        "#F59F00",
+        "#E64980",
+        "#7048E8",
+        "#868E96",
+        "#38D9A9",
+        "#FAB005",
+        "#4E9BFF",
+        "#E8590C"
+      ],
+      "ocean": [
+        "#1864AB",
+        "#339AF0",
+        "#74C0FC",
+        "#22B8A6",
+        "#0CA678",
+        "#F59F00",
+        "#E8590C",
+        "#7048E8"
+      ],
+      "forest": [
+        "#2B8A3E",
+        "#51CF66",
+        "#8CE99A",
+        "#0CA678",
+        "#22B8A6",
+        "#FAB005",
+        "#E8590C",
+        "#5F3DC4"
+      ],
+      "mono": [
+        "#212529",
+        "#495057",
+        "#868E96",
+        "#ADB5BD",
+        "#CED4DA",
+        "#212529",
+        "#495057",
+        "#868E96"
+      ],
+      "warm": [
+        "#E8590C",
+        "#F59F00",
+        "#FAB005",
+        "#FFD43B",
+        "#E64980",
+        "#C2255C",
+        "#A61E4D",
+        "#862E9C"
+      ]
+    },
+    "dark": {
+      "default": [
+        "#5C9CFF",
+        "#3DD6C0",
+        "#FFC24D",
+        "#FF7BA9",
+        "#9D7BFF",
+        "#A8B3BF",
+        "#4ED6A8",
+        "#FFD166",
+        "#74C0FC",
+        "#FF8A5C"
+      ],
+      "ocean": [
+        "#4C9AFF",
+        "#74C0FC",
+        "#A5D8FF",
+        "#3DD6C0",
+        "#63E6BE",
+        "#FFC24D",
+        "#FF8A5C",
+        "#9D7BFF"
+      ],
+      "forest": [
+        "#63E6BE",
+        "#8CE99A",
+        "#B2F2BB",
+        "#3DD6C0",
+        "#4ED6A8",
+        "#FFD166",
+        "#FF8A5C",
+        "#B197FC"
+      ],
+      "mono": [
+        "#DEE2E6",
+        "#C9D1D9",
+        "#A8B3BF",
+        "#8B98A5",
+        "#6C7A87",
+        "#DEE2E6",
+        "#C9D1D9",
+        "#A8B3BF"
+      ],
+      "warm": [
+        "#FF8A5C",
+        "#FFC24D",
+        "#FFD166",
+        "#FFE082",
+        "#FF7BA9",
+        "#F06595",
+        "#E64980",
+        "#CC5DE8"
+      ]
+    }
+  }
+}

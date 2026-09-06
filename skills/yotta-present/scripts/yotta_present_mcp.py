@@ -64,7 +64,7 @@ def mcp_tools():
             "可用 --form 显式指定，或用 --template 套命名场景模板（vuln_report/faq/status）；"
             "--platform 平台自适应（discord/whatsapp 表格转列表、标题转加粗；plain 去符号）；"
             "--channel 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强）；"
-            "--max-len 长度熔断；图表形态会在本机生成 SVG（--svg 指定路径，否则 Markdown 内嵌 data URI）。"
+            "--max-len 长度熔断；--theme light/dark（图表 SVG 暗色渲染）；图表形态会在本机生成 SVG（--svg 指定路径，否则 Markdown 内嵌 data URI）。"
             "数据不出本机。",
             {
                 "content": {"type": "string", "description": "内容：JSON 标准内容对象字符串，或 Markdown / 纯文本"},
@@ -74,6 +74,7 @@ def mcp_tools():
                              "description": "命名场景模板：vuln_report/faq/status（优先于 form，可选）"},
                 "platform": {"type": "string", "enum": yp.PLATFORMS, "description": "平台自适应（默认 webchat）：webchat 完整 Markdown；discord/whatsapp 表格转列表、标题转加粗；plain 去 Markdown 符号"},
                 "channel": {"type": "string", "enum": yp.CHANNELS, "description": "渲染通道（默认 auto 按 platform 映射）：r0 保底无色（无 emoji）/ r1 emoji 增强；r2/r3 高级美化通道当前未开放"},
+                "theme": {"type": "string", "enum": yp.THEMES, "description": "主题（默认 light）：light 亮色 / dark 暗色；图表 SVG 渲染用"},
                 "max_len": {"type": "integer", "description": "长度熔断上限（字符数，可选）：先压缩列表、再降标题、最后截断，保留结论"},
                 "bold_keys": {"type": "array", "items": {"type": "string"},
                               "description": "自动加粗的字段名数组（可选），命中字段的值渲染为 **加粗**（plain 不加）"},
@@ -110,6 +111,11 @@ def _tool_present(arguments):
     channel = str(arguments.get("channel") or "auto").strip().lower()
     if channel not in yp.CHANNELS:
         return _tool_error("channel 只支持 %s（当前：%s）" % ("/".join(yp.CHANNELS), channel))
+    theme = arguments.get("theme") or None
+    if theme is not None:
+        theme = str(theme).strip().lower()
+        if theme not in yp.THEMES:
+            return _tool_error("theme 只支持 %s（当前：%s）" % ("/".join(yp.THEMES), theme))
     max_len = arguments.get("max_len") or None
     bold_keys = arguments.get("bold_keys") or None
     if bold_keys is not None:
@@ -129,7 +135,7 @@ def _tool_present(arguments):
     explain = bool(arguments.get("explain", True))
     try:
         r = yp.present(content, form=form, title=title, svg_out=svg, explain=explain,
-                       platform=platform, channel=channel, template=template, max_len=max_len)
+                       platform=platform, channel=channel, template=template, max_len=max_len, theme=theme)
     except Exception as e:  # noqa: BLE001
         return _tool_error("present_result 执行失败：%s" % e)
     payload = {"form": r["form"], "channel": r.get("channel")}
