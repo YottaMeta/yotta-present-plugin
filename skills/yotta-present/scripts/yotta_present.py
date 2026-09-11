@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -208,42 +208,88 @@ def _norm_rows(items):
     return out
 
 
-def _parse_text(raw):
-    """纯文本 / Markdown 输入 → 标准内容对象（title/headline/bullets/body）。"""
-    data = {}
-    title = None
-    headline = None
-    bullets = []
-    body = []
-    for ln in raw.splitlines():
-        s = ln.rstrip()
-        m = re.match(r"^\s*#\s+(.+?)\s*$", s)
-        if m and title is None:
-            title = m.group(1).strip()
-            continue
-        m = re.match(r"^\s*>\s*(.+)$", s)
+def _split_md_cells(line):
+    core=line.strip()
+    if core.startswith('|'): core=core[1:]
+    if core.endswith('|'): core=core[:-1]
+    return [c.replace('\\|','|').strip() for c in re.split(r'(?<!\\)\|',core)]
+
+def _is_md_table_sep(line):
+    cells=_split_md_cells(line)
+    return bool(cells) and all(re.match(r'^:?-{3,}:?$',c) for c in cells if c!='') and any(c for c in cells)
+
+def _md_table_at(lines,i):
+    return i+1<len(lines) and '|' in lines[i] and '|' in lines[i+1] and _is_md_table_sep(lines[i+1])
+
+def _parse_markdown_blocks(raw):
+    lines=raw.splitlines(); blocks=[]; i=0
+    while i<len(lines):
+        line=lines[i]
+        if not line.strip(): i+=1; continue
+        fence=re.match(r'^(```|~~~)\s*([A-Za-z0-9_+-]*)\s*$',line.strip())
+        if fence:
+            marker,lang=fence.group(1),fence.group(2); i+=1; code=[]
+            while i<len(lines) and lines[i].strip()!=marker:
+                code.append(lines[i]); i+=1
+            i+=1; blocks.append({'type':'code','lang':lang,'text':'\n'.join(code)}); continue
+        m=re.match(r'^\s*(#{1,6})\s+(.+?)\s*$',line)
         if m:
-            if headline is None:
-                headline = m.group(1).strip()
-            else:
-                bullets.append(m.group(1).strip())
-            continue
-        if re.match(r"^\s*[-*]\s+", s):
-            bullets.append(re.sub(r"^\s*[-*]\s+", "", s))
-            continue
-        if re.match(r"^\s*\[[ xX]\]\s+", s):
-            bullets.append(s.strip())
-            continue
-        if s.strip():
-            body.append(s)
-    if title:
-        data["title"] = title
-    if headline:
-        data["headline"] = headline
-    if bullets:
-        data["bullets"] = bullets
-    if body:
-        data["body"] = body
+            blocks.append({'type':'heading','level':len(m.group(1)),'text':m.group(2).strip()}); i+=1; continue
+        if _md_table_at(lines,i):
+            headers=_split_md_cells(lines[i]); i+=2; rows=[]
+            while i<len(lines) and '|' in lines[i] and lines[i].strip():
+                rows.append(_split_md_cells(lines[i])); i+=1
+            blocks.append({'type':'table','headers':headers,'rows':rows}); continue
+        if re.match(r'^\s*>\s*',line):
+            quote=[]
+            while i<len(lines) and re.match(r'^\s*>\s*',lines[i]):
+                quote.append(re.sub(r'^\s*>\s?','',lines[i])); i+=1
+            blocks.append({'type':'quote','text':'\n'.join(quote).strip()}); continue
+        if re.match(r'^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+',line):
+            ordered=bool(re.match(r'^\s*\d+[.)]\s+',line)); items=[]
+            while i<len(lines) and re.match(r'^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+',lines[i]):
+                items.append(re.sub(r'^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+','',lines[i]).strip()); i+=1
+            blocks.append({'type':'list','ordered':ordered,'items':items}); continue
+        if (re.match(r'^\s*(?:问|q|question)\s*[:：]',lines[i],re.I)
+                and i+1<len(lines)
+                and re.match(r'^\s*(?:答|a|answer)\s*[:：]',lines[i+1],re.I)):
+            pairs=[]
+            while (i+1<len(lines)
+                   and re.match(r'^\s*(?:问|q|question)\s*[:：]',lines[i],re.I)
+                   and re.match(r'^\s*(?:答|a|answer)\s*[:：]',lines[i+1],re.I)):
+                q=re.sub(r'^\s*(?:问|q|question)\s*[:：]\s*','',lines[i],flags=re.I).strip()
+                a=re.sub(r'^\s*(?:答|a|answer)\s*[:：]\s*','',lines[i+1],flags=re.I).strip()
+                pairs.append((q,a)); i+=2
+            blocks.append({'type':'qa','pairs':pairs}); continue
+        para=[]
+        while i<len(lines) and lines[i].strip():
+            if (re.match(r'^\s*(#{1,6}\s|>|```|~~~)',lines[i])
+                    or re.match(r'^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+',lines[i])
+                    or re.match(r'^\s*(?:问|q|question)\s*[:：]',lines[i],re.I)
+                    or _md_table_at(lines,i)):
+                break
+            para.append(lines[i].strip()); i+=1
+        if para: blocks.append({'type':'paragraph','text':'\n'.join(para).strip()})
+    return blocks
+
+def _parse_text(raw):
+    blocks=_parse_markdown_blocks(raw); data={'blocks':blocks}
+    title_done=headline_done=table_done=code_done=False
+    for b in blocks:
+        btype=b['type']
+        if btype=='heading' and not title_done:
+            data['title']=b['text']; title_done=True
+        elif btype=='quote':
+            if not headline_done: data['headline']=b['text']; headline_done=True
+            else: data.setdefault('bullets',[]).append(b['text'])
+        elif btype=='list': data.setdefault('bullets',[]).extend(b['items'])
+        elif btype=='paragraph': data.setdefault('body',[]).extend(b['text'].splitlines())
+        elif btype=='table' and not table_done:
+            data['headers']=b['headers']; data['rows']=[dict(zip(b['headers'],row)) for row in b['rows']]; table_done=True
+        elif btype=='qa':
+            data.setdefault('rows',[]).extend({'问题':q,'回答':a} for q,a in b['pairs'])
+        elif btype=='code' and not code_done:
+            data['code']=b['text']; code_done=True
     return data
 
 
@@ -273,6 +319,11 @@ def normalize_content(raw, title_override=None):
 
     if title_override is not None:
         data["title"] = str(title_override)
+        if isinstance(data.get("blocks"), list):
+            for b in data["blocks"]:
+                if isinstance(b, dict) and b.get("type") == "heading":
+                    b["text"] = data["title"]
+                    break
 
     for k in SCALAR_KEYS:
         if k in data and data[k] is not None and not isinstance(data[k], str):
@@ -1000,6 +1051,133 @@ def _render_report_text(c):
     return "\n\n".join(sec)
 
 
+def _source_blocks(content, preferred_form=None):
+    if isinstance(content.get('blocks'),list) and content['blocks']:
+        return content['blocks']
+    blocks=[]
+    if content.get('title'):
+        blocks.append({'type':'heading','level':1,'text':str(content['title'])})
+    for key in ('headline','verdict'):
+        if content.get(key): blocks.append({'type':'summary','text':str(content[key])})
+
+    if content.get('metrics'):
+        blocks.append({'type':'table','headers':['指标','数值'],'rows':_metrics_rows(content['metrics'])})
+    if content.get('rows'):
+        try:
+            pairs=_parse_qa(content) if preferred_form=='qa' else []
+            if _looks_qa_rows(content['rows'],content.get('headers')) or (preferred_form=='qa' and pairs):
+                blocks.append({'type':'qa','pairs':pairs or _parse_qa(content)})
+            else:
+                headers,rows=_table_parts(content); blocks.append({'type':'table','headers':headers,'rows':rows})
+        except Exception:
+            blocks.append({'type':'paragraph','text':json.dumps(content['rows'],ensure_ascii=False)})
+    if content.get('bullets'):
+        pairs=_pairs_from_bullets(content['bullets'])
+        if pairs and (preferred_form=='qa' or _looks_qa_bullets(content['bullets'])):
+            blocks.append({'type':'qa','pairs':pairs})
+        else:
+            blocks.append({'type':'list','ordered':False,'items':[str(x) for x in content['bullets']]})
+    for item in content.get('body') or []: blocks.append({'type':'paragraph','text':str(item)})
+    for item in content.get('notes') or []: blocks.append({'type':'quote','text':str(item)})
+    if content.get('code'): blocks.append({'type':'code','lang':'','text':str(content['code'])})
+    if content.get('chart_data'): blocks.append({'type':'chart','data':content['chart_data']})
+    known=set(SCALAR_KEYS+LIST_KEYS+DICT_KEYS+('blocks','code','form','template','bold_keys'))
+    for key,val in content.items():
+        if key in known or val is None: continue
+        if isinstance(val,list):
+            blocks.append({'type':'list','ordered':False,'items':[str(x) for x in val],'label':key})
+        else:
+            text=json.dumps(val,ensure_ascii=False) if isinstance(val,dict) else str(val)
+            blocks.append({'type':'field','key':key,'text':text})
+    return blocks
+
+def _norm_coverage_text(value):
+    return re.sub(r'\s+',' ',str(value)).strip()
+
+def _block_tokens(block):
+    btype=block.get('type')
+    if btype in ('heading','summary','paragraph','quote','code','field'): return [block.get('text','')]
+    if btype=='list': return list(block.get('items') or [])
+    if btype=='table':
+        tokens=list(block.get('headers') or [])
+        for row in block.get('rows') or []: tokens.extend(str(x) for x in row)
+        return tokens
+    if btype=='qa':
+        tokens=[]
+        for q,a in block.get('pairs') or []: tokens.extend([q,a])
+        return tokens
+    if btype=='chart':
+        return []  # 图表数据由 SVG/图表元数据语义承载，不做逐字文本覆盖校验
+    return []
+
+def _missing_blocks(blocks,rendered):
+    rendered_norm=_norm_coverage_text(rendered); missing=[]
+    for block in blocks:
+        covered=True
+        for token in _block_tokens(block):
+            if token and _norm_coverage_text(token) not in rendered_norm:
+                covered=False; break
+        if not covered: missing.append(_block_label(block))
+    return missing
+
+def _blocks_covered(blocks,rendered):
+    return not _missing_blocks(blocks,rendered)
+
+def _block_label(block):
+    labels={'heading':'标题','summary':'摘要','paragraph':'段落','field':'字段','list':'列表','table':'表格','quote':'引用','code':'代码','qa':'问答','chart':'图表'}
+    return labels.get(block.get('type'),block.get('type','未知块'))
+
+
+def _render_report_safe_md(content,blocks,platform='webchat',channel='r1',chart_meta=None,svg_out=None,theme=None):
+    sec=[]; summary_done=False
+    for b in blocks:
+        btype=b.get('type')
+        if btype=='heading': sec.append(_h(int(b.get('level') or 1),b.get('text',''),platform))
+        elif btype=='summary':
+            if not summary_done:
+                bar=_summary_bar_md(content,platform,channel)
+                sec.append(bar if bar else _quote(b.get('text',''),platform)); summary_done=True
+            else: sec.append(_quote(b.get('text',''),platform))
+        elif btype=='field': sec.append(_maybe_bold(b.get('key',''),b.get('text',''),content,platform))
+        elif btype=='paragraph': sec.append(str(b.get('text','')))
+        elif btype=='list':
+            items=[str(x) for x in b.get('items') or []]
+            if b.get('ordered'): sec.append('\n'.join('%d. %s'%(i+1,x) for i,x in enumerate(items)))
+            else: sec.append(_md_bullets(items,platform))
+        elif btype=='table': sec.append(_md_table(b.get('headers') or [],b.get('rows') or [],platform))
+        elif btype=='quote': sec.append(_quote(b.get('text',''),platform))
+        elif btype=='code': sec.append('```%s\n%s\n```'%(b.get('lang') or '',b.get('text','')))
+        elif btype=='qa':
+            for q,a in b.get('pairs') or []:
+                sec.append(_bold('问：%s'%q,platform)); sec.append('答：%s'%a)
+        elif btype=='chart':
+            meta=chart_meta or _render_chart(b.get('data') or {},svg_out=svg_out,theme=theme)
+            sec.append(_render_chart_md(content,meta,prefer_path=bool(svg_out),platform=platform))
+    return '\n\n'.join(sec)
+
+def _render_report_safe_text(content,blocks,chart_meta=None,svg_out=None,theme=None):
+    sec=[]
+    for b in blocks:
+        btype=b.get('type')
+        if btype=='heading': sec.append(str(b.get('text','')))
+        elif btype=='summary': sec.append(str(b.get('text','')))
+        elif btype=='field': sec.append(str(b.get('text','')))
+        elif btype=='paragraph' or btype=='quote': sec.append(str(b.get('text','')))
+        elif btype=='list':
+            items=[str(x) for x in b.get('items') or []]
+            if b.get('ordered'): sec.append('\n'.join('%d. %s'%(i+1,x) for i,x in enumerate(items)))
+            else: sec.append('\n'.join('• %s'%x for x in items))
+        elif btype=='table': sec.append(_text_table(b.get('headers') or [],b.get('rows') or []))
+        elif btype=='code': sec.append(str(b.get('text','')))
+        elif btype=='qa':
+            for q,a in b.get('pairs') or []:
+                sec.append('问：%s'%q); sec.append('答：%s'%a)
+        elif btype=='chart':
+            meta=chart_meta or _render_chart(b.get('data') or {},svg_out=svg_out,theme=theme)
+            sec.append(_render_chart_text(content,meta))
+    return '\n\n'.join(sec)
+
+
 def _chart_ref(chart, prefer_path=False):
     """Markdown 图片引用：有本地路径且允许时用相对路径，否则用 data URI（自包含可复制）。"""
     if prefer_path and chart.get("path"):
@@ -1264,100 +1442,115 @@ def _render_chart(cd, svg_out=None, theme=None):
 
 
 def present(raw, form=None, title=None, svg_out=None, explain=False,
-            platform="webchat", channel="auto", template=None, max_len=None, theme=None):
-    """呈现核心入口。
-
-    raw: dict / JSON 字符串 / 纯文本
-    form: 显式形态（可选）
-    title: 标题覆盖（可选）
-    svg_out: 图表形态的本地 SVG 输出路径（可选）
-    explain: 附判断说明（可选）
-    platform: 平台自适应（webchat/discord/whatsapp/plain，默认 webchat）
-    channel: 渲染通道（auto/r0/r1/r2/r3，默认 auto 按 platform 自动映射：
-             plain → r0 保底无色，webchat/discord/whatsapp → r1 emoji 增强；
-             r2/r3 高级美化通道当前未开放）
-    template: 命名场景模板 key（vuln_report/faq/status，可选；优先于 form）
-    max_len: 长度熔断上限（字符数，可选）
-    theme: 主题（light/dark，可选；图表 SVG 渲染用，默认 light）
-    返回: {form, channel, markdown, text, explain?, chart?, warnings?}
-    """
+            platform='webchat', channel='auto', template=None, max_len=None, theme=None):
+    """呈现核心入口；v0.6.0 起执行内容保真门禁与 report-safe 降级。"""
+    platform=str(platform or 'webchat').strip().lower()
     if platform not in PLATFORMS:
-        raise PresentError("未知平台：%s（可选：%s）" % (platform, ", ".join(PLATFORMS)), hint="请从可选平台中选择：webchat / discord / whatsapp / plain。")
-    eff_channel = _resolve_channel(platform, channel)
+        raise PresentError('未知平台：%s（可选：%s）'%(platform,'/'.join(PLATFORMS)),hint='请从可选平台中选择：webchat / discord / whatsapp / plain。')
+    eff_channel=_resolve_channel(platform,channel)
     if theme is not None and str(theme).strip().lower() not in THEMES:
-        raise PresentError("未知主题：%s（可选：%s）" % (theme, "/".join(THEMES)),
-                           hint="主题用于图表 SVG 渲染：light / dark。其他形态不受主题影响。")
-    theme_low = str(theme).strip().lower() if theme is not None else None
-    content = normalize_content(raw, title_override=title)
+        raise PresentError('未知主题：%s（可选：%s）'%(theme,'/'.join(THEMES)),hint='主题用于图表 SVG 渲染：light / dark。其他形态不受主题影响。')
+    theme_low=str(theme).strip().lower() if theme is not None else None
+    content=normalize_content(raw,title_override=title)
+    candidate=None; chart_meta=None; requested_label=None; fallback_reason=None; reasons=[]
+    preferred_form=None
+
     if template is not None:
-        tpl_key = str(template).strip().lower()
+        blocks=_source_blocks(content)
+        tpl_key=str(template).strip().lower(); requested_label='template=%s'%tpl_key
         if tpl_key not in TEMPLATES:
-            raise PresentError("未知模板：%s（可选：%s）" % (tpl_key, ", ".join(sorted(TEMPLATES))), hint="请从可选模板中选择，或改用 --form 直接指定形态。")
-        f = tpl_key
-        reasons = ["用户显式指定 template=%s" % tpl_key]
-        md = _render_template_md(tpl_key, content, platform=platform, channel=eff_channel)
-        text = _render_template_text(tpl_key, content)
-        result = {"form": f, "markdown": md, "text": text}
+            fallback_reason='未知模板 %s；为避免假成功，已降级 report-safe 保留全部内容。'%tpl_key
+            reasons.append(fallback_reason)
+        else:
+            try:
+                candidate={'form':tpl_key,
+                           'markdown':_render_template_md(tpl_key,content,platform=platform,channel=eff_channel),
+                           'text':_render_template_text(tpl_key,content)}
+                reasons.append('用户显式指定 template=%s'%tpl_key)
+            except Exception as e:
+                fallback_reason='模板 %s 渲染失败（%s）；已降级 report-safe。'%(tpl_key,e)
+                reasons.append(fallback_reason)
     else:
         if form is not None:
-            f = str(form).strip().lower()
+            f=str(form).strip().lower()
             if f not in FORMS:
-                raise PresentError("未知形态：%s（可选：%s）" % (f, ", ".join(FORMS)), hint="请从可选形态中选择，或去掉 --form 让元呈自动判断。")
-            reasons = ["用户显式指定 form=%s" % f]
+                raise PresentError('未知形态：%s（可选：%s）'%(f,', '.join(FORMS)),hint='请从可选形态中选择，或去掉 --form 让元呈自动判断。')
+            reasons=['用户显式指定 form=%s'%f]
         else:
-            f, reasons = decide_form(content)
-
-        if f == "chart":
-            if not content.get("chart_data"):
-                raise PresentError("形态 chart 需要 chart_data 字段", hint="请传 chart_data（如 {chart: pie, labels: [...], data: [...]}），或用 --form 指定其它形态。")
-            chart = _render_chart(content["chart_data"], svg_out=svg_out, theme=theme_low)
-            md = _render_chart_md(content, chart, prefer_path=bool(svg_out), platform=platform)
-            text = _render_chart_text(content, chart)
-            result = {"form": f, "markdown": md, "text": text, "chart": chart}
-        elif f == "conclusion":
-            result = {"form": f, "markdown": _render_conclusion_md(content, platform, channel=eff_channel),
-                      "text": _render_conclusion_text(content)}
-        elif f == "table":
-            result = {"form": f, "markdown": _render_table_md(content, platform, channel=eff_channel),
-                      "text": _render_table_text(content)}
-        elif f == "checklist":
-            result = {"form": f, "markdown": _render_checklist_md(content, platform, channel=eff_channel),
-                      "text": _render_checklist_text(content)}
-        elif f == "prose":
-            result = {"form": f, "markdown": _render_prose_md(content, platform, channel=eff_channel),
-                      "text": _render_prose_text(content)}
-        elif f == "metrics":
-            result = {"form": f, "markdown": _render_metrics_md(content, platform, channel=eff_channel),
-                      "text": _render_metrics_text(content)}
-        elif f == "qa":
-            result = {"form": f, "markdown": _render_qa_md(content, platform, channel=eff_channel),
-                      "text": _render_qa_text(content)}
-        elif f == "report":
-            result = {"form": f, "markdown": _render_report_md(content, platform, channel=eff_channel),
-                      "text": _render_report_text(content)}
-        else:
-            raise PresentError("未实现的形态：%s" % f, hint="该形态当前不可用，请从可选形态中选择。")
-
-    result["channel"] = eff_channel
-    if max_len is not None:
+            f,reasons=decide_form(content)
+        requested_label='form=%s'%f
+        preferred_form=f
+        blocks=_source_blocks(content,preferred_form=f)
+        if f=='chart' and not content.get('chart_data'):
+            raise PresentError('形态 chart 需要 chart_data 字段',hint='请传 chart_data（如 {chart: pie, labels: [...], data: [...]}），或用 --form 指定其它形态。')
         try:
-            ml = int(max_len)
-        except (TypeError, ValueError):
-            raise PresentError("max_len 必须是正整数（当前：%s）" % max_len, hint="max_len 是输出长度上限（字符数），请传正整数。")
-        result["markdown"] = _enforce_max_len(result["markdown"], ml)
-        result["text"] = _enforce_max_len(result["text"], ml)
+            if f=='chart':
+                chart_meta=_render_chart(content['chart_data'],svg_out=svg_out,theme=theme_low)
+                candidate={'form':f,'markdown':_render_chart_md(content,chart_meta,prefer_path=bool(svg_out),platform=platform),
+                           'text':_render_chart_text(content,chart_meta),'chart':chart_meta}
+            elif f=='conclusion':
+                candidate={'form':f,'markdown':_render_conclusion_md(content,platform,channel=eff_channel),'text':_render_conclusion_text(content)}
+            elif f=='table':
+                candidate={'form':f,'markdown':_render_table_md(content,platform,channel=eff_channel),'text':_render_table_text(content)}
+            elif f=='checklist':
+                candidate={'form':f,'markdown':_render_checklist_md(content,platform,channel=eff_channel),'text':_render_checklist_text(content)}
+            elif f=='prose':
+                candidate={'form':f,'markdown':_render_prose_md(content,platform,channel=eff_channel),'text':_render_prose_text(content)}
+            elif f=='metrics':
+                candidate={'form':f,'markdown':_render_metrics_md(content,platform,channel=eff_channel),'text':_render_metrics_text(content)}
+            elif f=='qa':
+                candidate={'form':f,'markdown':_render_qa_md(content,platform,channel=eff_channel),'text':_render_qa_text(content)}
+            elif f=='report':
+                candidate={'form':f,'markdown':_render_report_md(content,platform,channel=eff_channel),'text':_render_report_text(content)}
+        except Exception as e:
+            fallback_reason='形态 %s 渲染失败（%s）；已降级 report-safe。'%(f,e)
+            reasons.append(fallback_reason)
 
+    if candidate is not None and fallback_reason is None and not _blocks_covered(blocks,candidate['markdown']):
+        fallback_reason='候选形态 %s 无法完整保留全部内容块；已降级 report-safe，避免静默丢内容。'%requested_label
+        reasons.append(fallback_reason); candidate=None
+
+    if candidate is not None:
+        result=candidate
+    else:
+        result={'form':'report',
+                'markdown':_render_report_safe_md(content,blocks,platform=platform,channel=eff_channel,chart_meta=chart_meta,svg_out=svg_out,theme=theme_low),
+                'text':_render_report_safe_text(content,blocks,chart_meta=chart_meta,svg_out=svg_out,theme=theme_low)}
+        if chart_meta: result['chart']=chart_meta
+
+    result['channel']=eff_channel
+    if max_len is not None:
+        try: ml=int(max_len)
+        except (TypeError,ValueError):
+            raise PresentError('max_len 必须是正整数（当前：%s）'%max_len,hint='max_len 是输出长度上限（字符数），请传正整数。')
+        result['markdown']=_enforce_max_len(result['markdown'],ml)
+        result['text']=_enforce_max_len(result['text'],ml)
+
+    block_labels=[_block_label(b) for b in blocks]; fallback=None
+    if fallback_reason is not None:
+        fallback={'from':requested_label,'to':'report','mode':'report-safe','reason':fallback_reason}
+        result['fallback']=fallback
+    missing=_missing_blocks(blocks,result['markdown'])
+    preserved=[x for x in block_labels if x not in missing]
+    compressed=missing if max_len is not None else []
+    result['fidelity']={'source_blocks':block_labels,'preserved':preserved,'dropped':missing,
+                        'compressed':compressed,'fallback':bool(fallback),
+                        'recommended_form':'report' if fallback else result['form']}
+    if missing and max_len is None:
+        result['warnings']=result.get('warnings',[])+['内容保真校验发现未覆盖块：%s；请提交该输入作为回归样例。'%('、'.join(missing))]
     if explain:
-        result["explain"] = reasons
-    warnings = _collect_warnings(content, f)
-    if warnings:
-        result["warnings"] = warnings
+        result['explain']=reasons+[
+            '形态：%s%s'%(result['form'],'（report-safe）' if fallback else ''),
+            '保留块：%s'%('、'.join(preserved) if preserved else '无'),
+            '压缩块：%s'%('、'.join(compressed) if compressed else '无'),
+            '丢弃块：%s%s'%('、'.join(missing) if missing else '无','（原因：max_len 长度熔断）' if missing and max_len is not None else ''),
+            '降级：%s'%(fallback_reason if fallback else '未发生降级'),
+            '建议形态：%s'%result['fidelity']['recommended_form']]
+    warnings=_collect_warnings(content,preferred_form or result['form'])
+    if fallback: warnings.append('内容保真门禁触发：%s'%fallback_reason)
+    if warnings: result['warnings']=warnings
     return result
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def _write_utf8(path, text):
     with open(path, "w", encoding="utf-8", newline="\n") as f:

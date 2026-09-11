@@ -39,9 +39,33 @@
 | `report` | JSON（多节组合）或 Markdown 多节 | `title` + 至少一段内容 | |
 | `chart` | JSON | `chart_data`（`chart`/`type` + 数据） | 无 `--svg` 时 Markdown 内嵌 data URI |
 
-> 规则：要精确控制形态，请显式传 `form` + 对应 JSON；不传 `form` 时按内容形状自动判断（可解释，`--explain` 返回原因）。错误字段组合不会报错，但会输出「提示」（CLI stderr / MCP `warnings` 字段）。
+> 规则：要精确控制形态，请显式传 `form` + 对应 JSON；不传 `form` 时按内容形状自动判断（可解释，`--explain` 返回原因）。显式形态仍受内容保真门禁约束：无法完整保留所有内容块时自动降级 report-safe，并在 `fallback` / `warnings` 中说明原因。
 
-## rows 三种形式
+## 内容保真与 report-safe（v0.6.0）
+
+Markdown / 纯文本输入会先解析为顺序块级中间表示：
+
+| 块类型 | 常见来源 |
+|---|---|
+| 标题 | `#`～`######` |
+| 摘要 / 引用 | `>`、JSON `headline` / `verdict` |
+| 段落 | 普通文本、JSON `body` |
+| 列表 | `-` / `*` / 数字列表 / `[x]` 复选框、JSON `bullets` |
+| 表格 | Markdown table、JSON `rows` + `headers` |
+| 代码 | fenced code block、JSON `code` |
+| 问答 | `问：` / `答：`、`Q:` / `A:`、JSON QA rows |
+| 图表 | JSON `chart_data` |
+
+渲染流程：
+
+1. 先按自动判断或显式 `form` / `template` 生成候选输出。
+2. 对候选输出执行块覆盖校验（标题、正文、表格单元格、列表项、代码、问答等均需有语义去处）。
+3. 覆盖不足时自动降级 `report-safe`：按源块顺序完整渲染，不强行套壳。
+4. 返回 `fallback`（来源 / 目标 / 原因）与 `fidelity`（源块 / 保留块 / 丢弃块 / 压缩块 / 建议形态）；`--explain` 输出同样取舍。
+
+例外：`max_len` 是用户显式开启的长度熔断；被截断的块会计入 `fidelity.dropped` / `fidelity.compressed`，不会假报“全部保留”。
+
+## rows 四种形式
 
 1. **对象列表（推荐）**：键并集即表头，列序按首现。
 
@@ -59,6 +83,15 @@
 
 ```json
 {"rows": [{"header": "安装方式", "value": "npx -y @yottameta/yotta-present"}]}
+```
+
+4. **Markdown table 输入**：直接传 Markdown 文本时，元呈会解析表头、分隔行与数据行；`--form table` 不要求用户先改成 JSON `rows`。
+
+```markdown
+| 方案 | 成本 |
+| --- | --- |
+| A | 低 |
+| B | 高 |
 ```
 
 ## chart_data
@@ -168,4 +201,4 @@ waterfall / word_cloud / sankey / spreadsheet / treemap）。
 
 ## 长度熔断（max_len）
 
-`max_len`（content）或 `--max-len N`（CLI）：渲染结果超限时依次「压缩列表 → 降标题层级 → 硬截断」，保留 `title` / `headline` / `verdict` 结论，不丢重点。
+`max_len`（content）或 `--max-len N`（CLI）：渲染结果超限时依次「压缩列表 → 降标题层级 → 硬截断」，优先保留 `title` / `headline` / `verdict`。被截断的块会在 `fidelity.dropped` / `fidelity.compressed` 中明确列出，`--explain` 同步说明取舍。

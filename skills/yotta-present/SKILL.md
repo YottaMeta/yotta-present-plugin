@@ -1,6 +1,6 @@
 ---
 name: yotta-present
-version: 0.5.0
+version: 0.6.0
 description: 元呈 —— AI 输出的默认呈现层：智能体先把输出内容判为「内容类型」，再选「呈现形态」（结论卡/表格/正文/指标板/问答卡/报告/图表…），用 yotta_present CLI 或 present_result MCP 统一渲染成可复制的 Markdown / 纯文本（按需附本地 SVG）。平台自适应（--platform / platform）：webchat 完整 Markdown、discord/whatsapp 表格转列表+标题转加粗、plain 去符号；渲染通道（--channel / channel）：auto 按 platform 映射 plain→r0 去 emoji、其余→r1 emoji 徽章+引用条（r0 保底无色 / r1 增强，r2/r3 高级美化未开放）；命名场景模板（vuln_report/faq/status，references/templates.json 可热更新）一次定义多处复用；codeblock + bold_keys 加粗 + max_len 长度熔断。触发：默认——凡交付给用户的 AI 输出都经元呈（判型 → 选形态 → 渲染）呈现；例外见正文白名单。边界：不做交互式图表编辑器 / BI / 数据分析工具；图表只是呈现形态之一；不做内容改写 / 判断本身。AI 首次使用自动接入 yotta-present MCP（写 mcpServers + 永久记忆护栏，均需用户明确同意），输出默认统一呈现、未加载时降级 CLI。
 license: MIT
 metadata:
@@ -64,7 +64,7 @@ metadata:
 
 ## 核心机制（判断层 = 核心深度）
 
-智能体按 **① 内容类型 → ② 呈现形态** 两步选择，再交给元呈渲染：
+智能体按 **① 内容类型 → ② 呈现形态 → ③ 内容保真门禁** 三步选择，再交给元呈渲染：
 
 ### ① 内容类型判定（8 大类）
 
@@ -93,6 +93,15 @@ metadata:
 
 > **兜底**：纯文字 → 至少套「正文」美化（层级 + 重点 + 可复制），**不让任何输出裸奔**。
 
+### ③ 内容保真门禁（v0.6.0 红线）
+
+- Markdown / 纯文本先解析为顺序块：标题、摘要、段落、列表、表格、引用、代码、问答、图表。
+- 候选 `form` / `template` 渲染后必须覆盖全部源内容块；覆盖不足自动降级 **report-safe**，禁止 title-only 静默失败。
+- JSON 结果返回 `fallback`（来源 / 目标 / 原因）与 `fidelity`（源块 / 保留块 / 丢弃块 / 压缩块 / 建议形态）。
+- `--explain` 必须说明保留了什么、压缩了什么、丢弃了什么、是否降级、为什么选择该形态。
+- `max_len` 是显式取舍：被截断块进入 `fidelity.dropped` / `fidelity.compressed`，不假报全量保留。
+- Markdown table 与 JSON `rows` 双兼容；显式指定“更具体”不等于允许丢内容。
+
 ## 确定性判断兜底（未接智能体也能跑）
 
 `yotta_present` 按输入 JSON 形状自动猜形态（可解释，`--explain` 返回原因）：
@@ -118,6 +127,9 @@ python3 scripts/yotta_present.py --content '{"title": "结论", "grade": "succes
 
 # 纯文本 / Markdown 输入（自动解析 + 兜底美化）
 python3 scripts/yotta_present.py --file result.txt
+
+# 混合 Markdown + 显式形态：内容保真校验；--json 查看 fallback / fidelity
+python3 scripts/yotta_present.py --file result.txt --form checklist --json
 
 # 纯文本输出（复制到 Word / 邮件）
 python3 scripts/yotta_present.py --content '<同上>' --text
@@ -184,7 +196,7 @@ python3 scripts/yotta_present.py --version
 
 **MCP 工具**：
 
-- `present_result`：`content`（JSON / Markdown / 纯文本）+ 可选 `form` / `template` / `platform` / `max_len` / `bold_keys` / `title` / `output`(md|text|both|json) / `svg` / `explain` → 可复制结果；`form=chart` + `chart_data` 复用 12 图内核（bar / line / pie / radar / scatter / histogram / funnel / waterfall / word_cloud / sankey / spreadsheet / treemap），本地 SVG 或 data URI；`template` 套命名场景模板（vuln_report/faq/status）；`platform` 平台自适应（discord/whatsapp 表格转列表+标题转加粗，plain 去符号）；`channel` 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强；r2/r3 未开放）；`theme` 主题（默认 light；dark 出暗色图表 SVG）；`max_len` 长度熔断。
+- `present_result`：`content`（JSON / Markdown / 纯文本）+ 可选 `form` / `template` / `platform` / `max_len` / `bold_keys` / `title` / `output`(md|text|both|json) / `svg` / `explain` → 可复制结果；JSON 输出包含内容保真元数据 `fallback` / `fidelity`；`form=chart` + `chart_data` 复用 12 图内核（bar / line / pie / radar / scatter / histogram / funnel / waterfall / word_cloud / sankey / spreadsheet / treemap），本地 SVG 或 data URI；`template` 套命名场景模板（vuln_report/faq/status）；`platform` 平台自适应（discord/whatsapp 表格转列表+标题转加粗，plain 去符号）；`channel` 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强；r2/r3 未开放）；`theme` 主题（默认 light；dark 出暗色图表 SVG）；`max_len` 长度熔断。
 - `present_forms`：列出开源基线 8 种形态（只读）。
 - `present_templates`：列出命名场景模板骨架（vuln_report/faq/status，只读）。
 
@@ -208,6 +220,9 @@ python3 scripts/yotta_present.py --version
 - 表格列名 → 用 `rows` 对象列表键或二维数组 + `headers`（`columns` 不支持）；
 - 图表 → 必须传 `chart_data`（`{chart, labels, data}`）；`--svg` 仅图表形态有效；
 - 形态不对 → 显式 `--form` 指定，或 `--explain` 看判断理由；
+- 显式形态不兼容 → 自动降级 report-safe，`fallback` / `fidelity` 说明取舍；
+- Markdown 表格 → 可直接传入，也可用 JSON `rows`（结构化推荐）；
+- `max_len` 截断 → `fidelity.dropped` / `fidelity.compressed` 明确列出被截断块；
 - MCP 未加载 → 检查 mcpServers 并重启会话，否则自动降级 CLI（输出一致）。
 - 想去掉 emoji / 颜色 → `--channel r0`（plain 平台自动即 r0）；R2/R3 高级美化通道后续版本开放。
 

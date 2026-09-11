@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "yotta-present",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "YuanCheng (元呈) — a universal result-presentation layer for AI agents: turn any AI output (JSON / Markdown / plain text) into a standard content object, pick a presentation form (conclusion card / table / checklist / prose / metric board / QA card / report / chart), and render copyable Markdown + plain text with optional local SVG. Local offline (Python 3.8+ standard library); 12-chart SVG kernel; MCP server with present_result tool; not a chart tool.",
   "author": {
     "name": "YottaMeta",

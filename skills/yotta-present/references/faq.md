@@ -51,3 +51,13 @@
 
 ## 14. `--channel r2 / r3` 报「尚未开放」？
 R2（富文本 HTML）/ R3（SVG 整卡）属高级美化引擎，计划后续版本推出；当前开源提供 r0（无色保底）/ r1（emoji 增强）。用默认 auto 即可，或显式 `--channel r0`。
+
+
+## 15. 显式指定 form/template 后内容会丢吗？
+不会静默丢。v0.6.0 起元呈先做块级内容保真校验；如果 `checklist` 无法保留表格、`status` 无法保留正文，会自动降级 `report-safe`，并在 JSON 结果的 `fallback` / `fidelity` / `warnings` 中说明原因。`--explain` 也会列出保留、压缩与丢弃的块。
+
+## 16. Markdown 表格可以直接传吗？
+可以。Markdown table 会被解析为表格块，`--form table` 与 `--form report` 都支持；不需要先改成 JSON `rows`。JSON `rows` 仍是结构化输入的推荐格式。
+
+## 17. `--max-len` 截断后为什么 `fidelity.dropped` 不为空？
+这是刻意显式取舍：`max_len` 表示用户要求长度上限，超限内容可能被压缩或截断。元呈不会假报“全部保留”，而是在 `fidelity.dropped` / `fidelity.compressed` 中列出被截断块，`--explain` 说明原因。
