@@ -54,7 +54,7 @@ R2（富文本 HTML）/ R3（SVG 整卡）属高级美化引擎，计划后续�
 
 
 ## 15. 显式指定 form/template 后内容会丢吗？
-不会静默丢。v0.6.0 起元呈先做块级内容保真校验；如果 `checklist` 无法保留表格、`status` 无法保留正文，会自动降级 `report-safe`，并在 JSON 结果的 `fallback` / `fidelity` / `warnings` 中说明原因。`--explain` 也会列出保留、压缩与丢弃的块。
+不会静默丢。v0.6.0 起元呈先做块级内容保真校验；如果 `checklist` 无法保留表格、`status` 无法保留正文，会自动降级 `report-safe`，并在 JSON 结果的 `fallback` / `fidelity` / `warnings` 中说明原因。`--explain` 也会列出保留、压缩与丢弃的块。v0.6.1 起顺序同样在保真范围内：有书写顺序的输入（Markdown / 纯文本）如果候选形态会改变块顺序，同样降级 `report-safe`，结果用 `fidelity.order_preserved` 记录。
 
 ## 16. Markdown 表格可以直接传吗？
 可以。Markdown table 会被解析为表格块，`--form table` 与 `--form report` 都支持；不需要先改成 JSON `rows`。JSON `rows` 仍是结构化输入的推荐格式。

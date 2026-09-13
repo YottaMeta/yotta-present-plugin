@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.6.0"
+VERSION = "0.6.2"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -1123,6 +1123,31 @@ def _missing_blocks(blocks,rendered):
 def _blocks_covered(blocks,rendered):
     return not _missing_blocks(blocks,rendered)
 
+def _order_violations(blocks,rendered):
+    """顺序保真校验：按源块顺序做单调锚点定位。
+
+    缺失块由覆盖校验负责（这里跳过，避免重复报）；只有「块存在但出现在前
+    一个块之前」才计入顺序问题。锚点取块的第一个非空语义片段。
+    """
+    rendered_norm=_norm_coverage_text(rendered); cursor=0; violations=[]
+    for block in blocks:
+        anchor=''
+        for token in _block_tokens(block):
+            norm=_norm_coverage_text(token)
+            if norm:
+                anchor=norm; break
+        if not anchor: continue
+        pos=rendered_norm.find(anchor,cursor)
+        if pos<0:
+            if anchor in rendered_norm:
+                violations.append(_block_label(block))
+            continue
+        cursor=pos+len(anchor)
+    return violations
+
+def _blocks_in_order(blocks,rendered):
+    return not _order_violations(blocks,rendered)
+
 def _block_label(block):
     labels={'heading':'标题','summary':'摘要','paragraph':'段落','field':'字段','list':'列表','table':'表格','quote':'引用','code':'代码','qa':'问答','chart':'图表'}
     return labels.get(block.get('type'),block.get('type','未知块'))
@@ -1443,7 +1468,7 @@ def _render_chart(cd, svg_out=None, theme=None):
 
 def present(raw, form=None, title=None, svg_out=None, explain=False,
             platform='webchat', channel='auto', template=None, max_len=None, theme=None):
-    """呈现核心入口；v0.6.0 起执行内容保真门禁与 report-safe 降级。"""
+    """呈现核心入口；v0.6.0 起执行内容保真门禁与 report-safe 降级，v0.6.1 起增加顺序保真校验。"""
     platform=str(platform or 'webchat').strip().lower()
     if platform not in PLATFORMS:
         raise PresentError('未知平台：%s（可选：%s）'%(platform,'/'.join(PLATFORMS)),hint='请从可选平台中选择：webchat / discord / whatsapp / plain。')
@@ -1451,6 +1476,12 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     if theme is not None and str(theme).strip().lower() not in THEMES:
         raise PresentError('未知主题：%s（可选：%s）'%(theme,'/'.join(THEMES)),hint='主题用于图表 SVG 渲染：light / dark。其他形态不受主题影响。')
     theme_low=str(theme).strip().lower() if theme is not None else None
+    authored_order=False
+    if isinstance(raw,str):
+        s=raw.lstrip()
+        authored_order=bool(s) and s[0] not in '[{'
+    elif isinstance(raw,dict) and isinstance(raw.get('blocks'),list) and raw.get('blocks'):
+        authored_order=True
     content=normalize_content(raw,title_override=title)
     candidate=None; chart_meta=None; requested_label=None; fallback_reason=None; reasons=[]
     preferred_form=None
@@ -1509,6 +1540,9 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     if candidate is not None and fallback_reason is None and not _blocks_covered(blocks,candidate['markdown']):
         fallback_reason='候选形态 %s 无法完整保留全部内容块；已降级 report-safe，避免静默丢内容。'%requested_label
         reasons.append(fallback_reason); candidate=None
+    elif authored_order and candidate is not None and fallback_reason is None and not _blocks_in_order(blocks,candidate['markdown']):
+        fallback_reason='候选形态 %s 无法保持内容块顺序；已降级 report-safe，避免静默重排。'%requested_label
+        reasons.append(fallback_reason); candidate=None
 
     if candidate is not None:
         result=candidate
@@ -1533,17 +1567,23 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     missing=_missing_blocks(blocks,result['markdown'])
     preserved=[x for x in block_labels if x not in missing]
     compressed=missing if max_len is not None else []
+    order_violations=_order_violations(blocks,result['markdown']) if authored_order else []
     result['fidelity']={'source_blocks':block_labels,'preserved':preserved,'dropped':missing,
                         'compressed':compressed,'fallback':bool(fallback),
+                        'order_checked':authored_order,'order_preserved':(not order_violations) if authored_order else None,
+                        'order_violations':order_violations,
                         'recommended_form':'report' if fallback else result['form']}
     if missing and max_len is None:
         result['warnings']=result.get('warnings',[])+['内容保真校验发现未覆盖块：%s；请提交该输入作为回归样例。'%('、'.join(missing))]
+    if order_violations:
+        result['warnings']=result.get('warnings',[])+['内容保真校验发现顺序未保持：%s；请提交该输入作为回归样例。'%('、'.join(order_violations))]
     if explain:
         result['explain']=reasons+[
             '形态：%s%s'%(result['form'],'（report-safe）' if fallback else ''),
             '保留块：%s'%('、'.join(preserved) if preserved else '无'),
             '压缩块：%s'%('、'.join(compressed) if compressed else '无'),
             '丢弃块：%s%s'%('、'.join(missing) if missing else '无','（原因：max_len 长度熔断）' if missing and max_len is not None else ''),
+            '顺序：%s'%('不适用（JSON 字段输入由形态结构决定）' if not authored_order else ('保持' if not order_violations else '未保持（%s）'%'、'.join(order_violations))),
             '降级：%s'%(fallback_reason if fallback else '未发生降级'),
             '建议形态：%s'%result['fidelity']['recommended_form']]
     warnings=_collect_warnings(content,preferred_form or result['form'])
