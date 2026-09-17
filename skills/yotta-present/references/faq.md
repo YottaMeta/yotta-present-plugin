@@ -34,6 +34,13 @@
 ## 8. 复制到 Word / 邮件格式乱？
 用 `--text` 输出纯文本（去 Markdown 符号）。
 
+## 9. `metrics` 报“必须是对象列表”？
+`metrics` 只接受 `[{label,value,unit?,tone?}]`，不接受字符串数组或单个对象。例如：
+
+```json
+{"metrics": [{"label": "任务", "value": 12, "unit": "项"}]}
+```
+
 ## 9. 输出太长？
 用 `--max-len N`：先压缩列表、再降标题层级、最后截断，保留结论（title / headline / verdict）。
 

@@ -12,7 +12,7 @@
 | `headline` | string | 否 | 头条 / 一句话结论（引用块） |
 | `grade` | string | 否 | 等级徽章：`success`(🟢通过) / `warn`(🟡警告) / `danger`(🔴危险) / `info`(⚪信息)，或任意自定义文本 |
 | `verdict` | string | 否 | 裁决 / 结论正文（与 `grade` 搭配） |
-| `metrics` | array | 否 | 指标块：`[{label, value, unit?, tone?}]`；`tone` 取 `up`(▲) / `down`(▼) / `neutral`(—) |
+| `metrics` | array | 否 | 指标块，必须是对象列表：`[{"label": "任务", "value": 12, "unit": "项"}]`；`tone` 取 `up`(▲) / `down`(▼) / `neutral`(—) |
 | `rows` | array | 否 | 表格：对象列表 / 二维数组 / 键值对（见下） |
 | `bullets` | array | 否 | 要点（短列表项）；`[x]` / `[ ]` 前缀自动保留为复选框 |
 | `body` | array | 否 | 正文段落（长文本；纯文本输入自动解析而来） |

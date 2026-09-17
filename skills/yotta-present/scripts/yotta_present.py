@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.6.2"
+VERSION = "0.6.3"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -184,11 +184,16 @@ def _norm_scalar_list(key, items):
 
 def _norm_metrics(items):
     out = []
+    hint = ('metrics 应为对象列表，例如 '
+            '[{label, value, unit, tone}] -> '
+            '[{"label": "任务", "value": 12, "unit": "项"}]')
     for i, it in enumerate(items):
         if not isinstance(it, dict):
-            raise PresentError("metrics 第 %d 项必须是对象 {label, value, ...}" % (i + 1))
+            raise PresentError("metrics 第 %d 项必须是对象 {label, value, ...}" % (i + 1),
+                               hint=hint)
         if "label" not in it or "value" not in it:
-            raise PresentError("metrics 第 %d 项缺 label 或 value" % (i + 1))
+            raise PresentError("metrics 第 %d 项缺 label 或 value" % (i + 1),
+                               hint=hint)
         m = dict(it)
         m["label"] = str(m["label"])
         m["value"] = _fmt_num(m["value"]) if isinstance(m["value"], (int, float)) else str(m["value"])
@@ -332,7 +337,12 @@ def normalize_content(raw, title_override=None):
         if k not in data or data[k] is None:
             continue
         if not isinstance(data[k], list):
-            raise PresentError("%s 必须是数组" % k, hint="该字段应为数组（列表），例如 [a, b]；请检查数据类型。")
+            hint = ("metrics 应为对象列表，例如 "
+                    "[{label, value, unit, tone}] -> "
+                    "[{\"label\": \"任务\", \"value\": 12, \"unit\": \"项\"}]"
+                    if k == "metrics" else
+                    "该字段应为数组（列表），例如 [a, b]；请检查数据类型。")
+            raise PresentError("%s 必须是数组" % k, hint=hint)
         if k == "metrics":
             data[k] = _norm_metrics(data[k])
         elif k == "rows":
