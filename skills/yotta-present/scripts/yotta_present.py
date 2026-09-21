@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.6.3"
+VERSION = "0.6.4"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -226,6 +226,12 @@ def _is_md_table_sep(line):
 def _md_table_at(lines,i):
     return i+1<len(lines) and '|' in lines[i] and '|' in lines[i+1] and _is_md_table_sep(lines[i+1])
 
+_LIST_ITEM_RE=re.compile(r'^(?P<indent>[ \t]*)(?:(?P<ordered>\d+)[.)]|(?P<bullet>[-*+])|(?P<task>\[[ xX]\]))\s+(?P<text>.*)$')
+_LIST_LINE_RE=re.compile(r'^(?P<indent>[ \t]*)(?:(?P<ordered>\d+)[.)]|(?P<bullet>[-*+•])|(?P<task>\[[ xX]\]))\s+(?P<text>.+?)\s*$')
+
+def _indent_width(value):
+    return sum(4 if ch=='\t' else 1 for ch in value)
+
 def _parse_markdown_blocks(raw):
     lines=raw.splitlines(); blocks=[]; i=0
     while i<len(lines):
@@ -251,10 +257,26 @@ def _parse_markdown_blocks(raw):
                 quote.append(re.sub(r'^\s*>\s?','',lines[i])); i+=1
             blocks.append({'type':'quote','text':'\n'.join(quote).strip()}); continue
         if re.match(r'^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+',line):
-            ordered=bool(re.match(r'^\s*\d+[.)]\s+',line)); items=[]
-            while i<len(lines) and re.match(r'^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+',lines[i]):
-                items.append(re.sub(r'^\s*(?:[-*+]|\d+[.)]|\[[ xX]\])\s+','',lines[i]).strip()); i+=1
-            blocks.append({'type':'list','ordered':ordered,'items':items}); continue
+            items=[]; indent_stack=[]
+            while i<len(lines):
+                item_match=_LIST_ITEM_RE.match(lines[i])
+                if not item_match: break
+                indent=_indent_width(item_match.group('indent') or '')
+                if not indent_stack or indent>indent_stack[-1]:
+                    indent_stack.append(indent)
+                else:
+                    while len(indent_stack)>1 and indent<indent_stack[-1]:
+                        indent_stack.pop()
+                    if indent>indent_stack[-1]:
+                        indent_stack.append(indent)
+                    elif indent<indent_stack[-1]:
+                        indent_stack=[indent]
+                ordered=item_match.group('ordered') is not None
+                items.append({'text':item_match.group('text').strip(),
+                              'depth':max(0,len(indent_stack)-1),
+                              'ordered':ordered})
+                i+=1
+            blocks.append({'type':'list','ordered':bool(items and items[0]['ordered']),'items':items}); continue
         if (re.match(r'^\s*(?:问|q|question)\s*[:：]',lines[i],re.I)
                 and i+1<len(lines)
                 and re.match(r'^\s*(?:答|a|answer)\s*[:：]',lines[i+1],re.I)):
@@ -287,7 +309,7 @@ def _parse_text(raw):
         elif btype=='quote':
             if not headline_done: data['headline']=b['text']; headline_done=True
             else: data.setdefault('bullets',[]).append(b['text'])
-        elif btype=='list': data.setdefault('bullets',[]).extend(b['items'])
+        elif btype=='list': data.setdefault('bullets',[]).extend(item['text'] for item in _list_item_records(b))
         elif btype=='paragraph': data.setdefault('body',[]).extend(b['text'].splitlines())
         elif btype=='table' and not table_done:
             data['headers']=b['headers']; data['rows']=[dict(zip(b['headers'],row)) for row in b['rows']]; table_done=True
@@ -577,6 +599,86 @@ def _md_bullets(bullets, platform="webchat"):
 
 def _text_bullets(bullets):
     return "\n".join(str(b) for b in bullets)
+
+
+def _list_item_records(block):
+    default_ordered=bool(block.get('ordered'))
+    records=[]
+    for item in block.get('items') or []:
+        if isinstance(item,dict):
+            try:
+                depth=max(0,int(item.get('depth') or 0))
+            except (TypeError,ValueError):
+                depth=0
+            records.append({'text':str(item.get('text','')),
+                            'depth':depth,
+                            'ordered':bool(item.get('ordered',default_ordered))})
+        else:
+            records.append({'text':str(item),'depth':0,'ordered':default_ordered})
+    return records
+
+
+def _render_list_md(block, platform="webchat"):
+    lines=[]; counters={}
+    for item in _list_item_records(block):
+        depth=item['depth']; text=item['text']; indent='  '*depth
+        for key in [k for k in counters if k>depth]:
+            del counters[key]
+        if re.match(r'^\[[ xX]\](\s|$)',text):
+            lines.append(indent+text)
+            continue
+        if item['ordered']:
+            counters[depth]=counters.get(depth,0)+1
+            marker='%d.'%counters[depth]
+        else:
+            marker='•' if platform=='plain' else '-'
+        lines.append('%s%s %s'%(indent,marker,text))
+    return '\n'.join(lines)
+
+
+def _rendered_list_records(rendered):
+    records=[]; indent_stack=[]
+    for line in str(rendered).splitlines():
+        match=_LIST_LINE_RE.match(line)
+        if not match:
+            indent_stack=[]
+            continue
+        indent=_indent_width(match.group('indent') or '')
+        if not indent_stack or indent>indent_stack[-1]:
+            indent_stack.append(indent)
+        else:
+            while len(indent_stack)>1 and indent<indent_stack[-1]:
+                indent_stack.pop()
+            if indent>indent_stack[-1]:
+                indent_stack.append(indent)
+            elif indent<indent_stack[-1]:
+                indent_stack=[indent]
+        text=match.group('text').strip()
+        if match.group('task'):
+            text=('%s %s'%(match.group('task'),text)).strip()
+        records.append({'text':text,
+                        'depth':max(0,len(indent_stack)-1),
+                        'ordered':match.group('ordered') is not None})
+    return records
+
+
+def _list_structure_missing(block,rendered):
+    nested=[item for item in _list_item_records(block) if item['depth']>0]
+    if not nested:
+        return False
+    actual=_rendered_list_records(rendered); cursor=0
+    for expected in nested:
+        expected_text=_norm_coverage_text(expected['text'])
+        found=False
+        while cursor<len(actual):
+            candidate=actual[cursor]; cursor+=1
+            if (candidate['depth']==expected['depth']
+                    and candidate['ordered']==expected['ordered']
+                    and _norm_coverage_text(candidate['text'])==expected_text):
+                found=True; break
+        if not found:
+            return True
+    return False
 
 
 def _md_body(body):
@@ -983,7 +1085,14 @@ def _report_sections(c):
     ]
 
 
-def _render_report_md(c, platform="webchat", channel="r1"):
+def _report_list_md(c, blocks, platform):
+    list_blocks=[b for b in (blocks or []) if isinstance(b,dict) and b.get('type')=='list']
+    if list_blocks:
+        return '\n\n'.join(_render_list_md(b,platform) for b in list_blocks)
+    return _md_bullets(c.get('bullets') or [],platform)
+
+
+def _render_report_md(c, platform="webchat", channel="r1", blocks=None):
     sec = []
     if c.get("title"):
         sec.append(_h(1, _maybe_bold("title", c["title"], c, platform), platform))
@@ -1020,13 +1129,13 @@ def _render_report_md(c, platform="webchat", channel="r1"):
             headers, data = _table_parts(c)
             sec.append(_md_table(headers, data, platform))
         elif t == "要点":
-            sec.append(_md_bullets(c["bullets"], platform))
+            sec.append(_report_list_md(c, blocks, platform))
         elif t == "注记":
             sec.append(_md_notes(c["notes"], platform))
     return "\n\n".join(sec)
 
 
-def _render_report_text(c):
+def _render_report_text(c, blocks=None):
     sec = []
     if c.get("title"):
         sec.append(c["title"])
@@ -1055,7 +1164,7 @@ def _render_report_text(c):
             headers, data = _table_parts(c)
             sec.append(_text_table(headers, data))
         elif t == "要点":
-            sec.append(_text_bullets(c["bullets"]))
+            sec.append(_report_list_md(c, blocks, platform='plain'))
         elif t == "注记":
             sec.append(_text_notes(c["notes"]))
     return "\n\n".join(sec)
@@ -1107,7 +1216,7 @@ def _norm_coverage_text(value):
 def _block_tokens(block):
     btype=block.get('type')
     if btype in ('heading','summary','paragraph','quote','code','field'): return [block.get('text','')]
-    if btype=='list': return list(block.get('items') or [])
+    if btype=='list': return [item['text'] for item in _list_item_records(block)]
     if btype=='table':
         tokens=list(block.get('headers') or [])
         for row in block.get('rows') or []: tokens.extend(str(x) for x in row)
@@ -1127,6 +1236,8 @@ def _missing_blocks(blocks,rendered):
         for token in _block_tokens(block):
             if token and _norm_coverage_text(token) not in rendered_norm:
                 covered=False; break
+        if covered and block.get('type')=='list' and _list_structure_missing(block,rendered):
+            covered=False
         if not covered: missing.append(_block_label(block))
     return missing
 
@@ -1176,9 +1287,7 @@ def _render_report_safe_md(content,blocks,platform='webchat',channel='r1',chart_
         elif btype=='field': sec.append(_maybe_bold(b.get('key',''),b.get('text',''),content,platform))
         elif btype=='paragraph': sec.append(str(b.get('text','')))
         elif btype=='list':
-            items=[str(x) for x in b.get('items') or []]
-            if b.get('ordered'): sec.append('\n'.join('%d. %s'%(i+1,x) for i,x in enumerate(items)))
-            else: sec.append(_md_bullets(items,platform))
+            sec.append(_render_list_md(b,platform))
         elif btype=='table': sec.append(_md_table(b.get('headers') or [],b.get('rows') or [],platform))
         elif btype=='quote': sec.append(_quote(b.get('text',''),platform))
         elif btype=='code': sec.append('```%s\n%s\n```'%(b.get('lang') or '',b.get('text','')))
@@ -1199,9 +1308,7 @@ def _render_report_safe_text(content,blocks,chart_meta=None,svg_out=None,theme=N
         elif btype=='field': sec.append(str(b.get('text','')))
         elif btype=='paragraph' or btype=='quote': sec.append(str(b.get('text','')))
         elif btype=='list':
-            items=[str(x) for x in b.get('items') or []]
-            if b.get('ordered'): sec.append('\n'.join('%d. %s'%(i+1,x) for i,x in enumerate(items)))
-            else: sec.append('\n'.join('• %s'%x for x in items))
+            sec.append(_render_list_md(b,platform='plain'))
         elif btype=='table': sec.append(_text_table(b.get('headers') or [],b.get('rows') or []))
         elif btype=='code': sec.append(str(b.get('text','')))
         elif btype=='qa':
@@ -1542,7 +1649,8 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
             elif f=='qa':
                 candidate={'form':f,'markdown':_render_qa_md(content,platform,channel=eff_channel),'text':_render_qa_text(content)}
             elif f=='report':
-                candidate={'form':f,'markdown':_render_report_md(content,platform,channel=eff_channel),'text':_render_report_text(content)}
+                candidate={'form':f,'markdown':_render_report_md(content,platform,channel=eff_channel,blocks=blocks),
+                           'text':_render_report_text(content,blocks=blocks)}
         except Exception as e:
             fallback_reason='形态 %s 渲染失败（%s）；已降级 report-safe。'%(f,e)
             reasons.append(fallback_reason)

@@ -12,7 +12,7 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Productivity",
-      "version": "0.6.3",
+      "version": "0.6.4",
       "description": "YuanCheng (元呈) — a universal result-presentation layer for AI agents: turn any AI output (JSON / Markdown / plain text) into a standard content object, pick a presentation form (conclusion card / table / checklist / prose / metric board / QA card / report / chart), and render copyable Markdown + plain text with optional local SVG. Local offline (Python 3.8+ standard library); 12-chart SVG kernel; MCP server with present_result tool; not a chart tool.",
       "interface": {
         "displayName": "元呈 yotta-present",
