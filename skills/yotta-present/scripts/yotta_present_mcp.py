@@ -67,6 +67,7 @@ def mcp_tools():
             "--platform 平台自适应（discord/whatsapp 表格转列表、标题转加粗；plain 去符号）；"
             "--channel 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强）；"
             "--max-len 长度熔断；--theme light/dark（图表 SVG 暗色渲染）；图表形态会在本机生成 SVG（--svg 指定路径，否则 Markdown 内嵌 data URI）。"
+            "高级参数可统一放入 options；旧版顶层高级参数继续兼容。"
             "数据不出本机。",
             {
                 "content": {"type": "string", "description": "内容：JSON 标准内容对象字符串，或 Markdown / 纯文本"},
@@ -74,17 +75,11 @@ def mcp_tools():
                          "description": "显式形态（缺省自动判断）"},
                 "template": {"type": "string", "enum": sorted(yp.TEMPLATES),
                              "description": "命名场景模板：vuln_report/faq/status（优先于 form，可选）"},
-                "platform": {"type": "string", "enum": yp.PLATFORMS, "description": "平台自适应（默认 webchat）：webchat 完整 Markdown；discord/whatsapp 表格转列表、标题转加粗；plain 去 Markdown 符号"},
-                "channel": {"type": "string", "enum": yp.CHANNELS, "description": "渲染通道（默认 auto 按 platform 映射）：r0 保底无色（无 emoji）/ r1 emoji 增强；r2/r3 高级美化通道当前未开放"},
-                "theme": {"type": "string", "enum": yp.THEMES, "description": "主题（默认 light）：light 亮色 / dark 暗色；图表 SVG 渲染用"},
-                "max_len": {"type": "integer", "description": "长度熔断上限（字符数，可选）：先压缩列表、再降标题、最后截断，保留结论"},
-                "bold_keys": {"type": "array", "items": {"type": "string"},
-                              "description": "自动加粗的字段名数组（可选），命中字段的值渲染为 **加粗**（plain 不加）"},
-                "title": {"type": "string", "description": "覆盖标题（可选）"},
                 "output": {"type": "string", "enum": ["md", "text", "both", "json"],
                            "description": "返回内容（默认 md）"},
-                "svg": {"type": "string", "description": "图表形态：本地 SVG 输出路径（可选）"},
                 "explain": {"type": "boolean", "description": "附判断说明（默认 true，缺省返回判型理由；可显式 explain=false 关闭）"},
+                "options": {"type": "object",
+                            "description": "高级选项对象（可选）：platform（webchat/discord/whatsapp/plain）、channel（auto/r0/r1）、theme（light/dark）、max_len（正整数）、bold_keys（字段数组）、title（标题覆盖）、svg（本地 SVG 路径）。旧版顶层高级参数仍兼容。"},
             },
             ["content"],
         ),
@@ -105,21 +100,32 @@ def _tool_present(arguments):
     content = arguments.get("content")
     if not content or not str(content).strip():
         return _tool_error("present_result 需要 content 参数")
-    form = arguments.get("form") or None
-    template = arguments.get("template") or None
-    platform = str(arguments.get("platform") or "webchat").strip().lower()
+    options = arguments.get("options")
+    if options is None:
+        options = {}
+    if not isinstance(options, dict):
+        return _tool_error("options 必须是对象")
+
+    def opt(name, default=None):
+        if name in arguments and arguments.get(name) is not None:
+            return arguments.get(name)
+        return options.get(name, default)
+
+    form = opt("form") or None
+    template = opt("template") or None
+    platform = str(opt("platform", "webchat") or "webchat").strip().lower()
     if platform not in yp.PLATFORMS:
         return _tool_error("platform 只支持 %s（当前：%s）" % ("/".join(yp.PLATFORMS), platform))
-    channel = str(arguments.get("channel") or "auto").strip().lower()
+    channel = str(opt("channel", "auto") or "auto").strip().lower()
     if channel not in yp.CHANNELS:
         return _tool_error("channel 只支持 %s（当前：%s）" % ("/".join(yp.CHANNELS), channel))
-    theme = arguments.get("theme") or None
+    theme = opt("theme") or None
     if theme is not None:
         theme = str(theme).strip().lower()
         if theme not in yp.THEMES:
             return _tool_error("theme 只支持 %s（当前：%s）" % ("/".join(yp.THEMES), theme))
-    max_len = arguments.get("max_len") or None
-    bold_keys = arguments.get("bold_keys") or None
+    max_len = opt("max_len") or None
+    bold_keys = opt("bold_keys") or None
     if bold_keys is not None:
         # bold_keys 作为独立参数时并入 content（content 为 JSON 对象时）
         try:
@@ -129,12 +135,12 @@ def _tool_present(arguments):
         if isinstance(merged, dict):
             merged.setdefault("bold_keys", list(bold_keys))
             content = json.dumps(merged, ensure_ascii=False)
-    title = arguments.get("title") or None
-    svg = arguments.get("svg") or None
-    output = str(arguments.get("output") or "md").strip().lower()
+    title = opt("title") or None
+    svg = opt("svg") or None
+    output = str(opt("output", "md") or "md").strip().lower()
     if output not in ("md", "text", "both", "json"):
         return _tool_error("output 只支持 md|text|both|json（当前：%s）" % output)
-    explain = bool(arguments.get("explain", True))
+    explain = bool(opt("explain", True))
     try:
         r = yp.present(content, form=form, title=title, svg_out=svg, explain=explain,
                        platform=platform, channel=channel, template=template, max_len=max_len, theme=theme)

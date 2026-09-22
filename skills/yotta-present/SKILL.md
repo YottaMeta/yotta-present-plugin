@@ -1,6 +1,6 @@
 ---
 name: yotta-present
-version: 0.6.4
+version: 0.6.5
 description: 元呈 —— AI 输出的默认呈现层：智能体先把输出内容判为「内容类型」，再选「呈现形态」（结论卡/表格/正文/指标板/问答卡/报告/图表…），用 yotta_present CLI 或 present_result MCP 统一渲染成可复制的 Markdown / 纯文本（按需附本地 SVG）。平台自适应（--platform / platform）：webchat 完整 Markdown、discord/whatsapp 表格转列表+标题转加粗、plain 去符号；渲染通道（--channel / channel）：auto 按 platform 映射 plain→r0 去 emoji、其余→r1 emoji 徽章+引用条（r0 保底无色 / r1 增强，r2/r3 高级美化未开放）；命名场景模板（vuln_report/faq/status，references/templates.json 可热更新）一次定义多处复用；codeblock + bold_keys 加粗 + max_len 长度熔断。触发：默认——凡交付给用户的 AI 输出都经元呈（判型 → 选形态 → 渲染）呈现；例外见正文白名单。边界：不做交互式图表编辑器 / BI / 数据分析工具；图表只是呈现形态之一；不做内容改写 / 判断本身。AI 首次使用自动接入 yotta-present MCP（写 mcpServers + 永久记忆护栏，均需用户明确同意），输出默认统一呈现、未加载时降级 CLI。
 license: MIT
 metadata:
@@ -50,11 +50,15 @@ metadata:
 
 **判型（第一步，必做）**：把内容归入 8 种形态之一，规则见 `references/schema.md`；拿不准用 `--explain` 看理由，或 `--form` 显式指定。
 
+**发送前自检（第二步，必做）**：本条是否含清单 / 表格 / 结论 / 汇总？只要含其中一种，就必须先调用 `present_result`（未加载时用 CLI）再发送。
+
 **白名单例外（明确退回原样，不用元呈）**：
 - 纯代码 / 命令 / CLI 原始输出（tab、换行格式关键）
 - 错误堆栈 / 日志（需逐字节原样）
 - 超长内容走 `--out` 落盘，不在对话内整体渲染
 - 用户明确「一句话 / 给裸文本」
+
+例外只豁免命中的内容块本身；同一条消息内其余清单 / 表格 / 结论 / 汇总块仍须经元呈渲染。
 
 **渲染通道与平台（channel × platform）**：`--channel`（默认 `auto`）定「载体族」、`--platform` 定「族内降级」：`plain` → `r0`（保底无色、无 emoji 徽章），`webchat`/`discord`/`whatsapp` → `r1`（🟢🟡🔴⚪ emoji 徽章 + 引用条 + 分隔线）；`r2`/`r3`（富文本 HTML / SVG 整卡）属高级美化引擎，后续版本开放。想强制无色基础 Markdown（如 GitHub 等 sanitize 宿主）→ `--channel r0`；颜色永不当唯一信息载体（r0 去掉 emoji 后文字徽章仍在）。
 
@@ -203,7 +207,7 @@ python3 scripts/yotta_present.py --version
 
 **MCP 工具**：
 
-- `present_result`：`content`（JSON / Markdown / 纯文本）+ 可选 `form` / `template` / `platform` / `max_len` / `bold_keys` / `title` / `output`(md|text|both|json) / `svg` / `explain` → 可复制结果；JSON 输出包含内容保真元数据 `fallback` / `fidelity`（含 `order_preserved`）；`form=chart` + `chart_data` 复用 12 图内核（bar / line / pie / radar / scatter / histogram / funnel / waterfall / word_cloud / sankey / spreadsheet / treemap），本地 SVG 或 data URI；`template` 套命名场景模板（vuln_report/faq/status）；`platform` 平台自适应（discord/whatsapp 表格转列表+标题转加粗，plain 去符号）；`channel` 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强；r2/r3 未开放）；`theme` 主题（默认 light；dark 出暗色图表 SVG）；`max_len` 长度熔断。
+- `present_result`：默认 schema 只列 `content`（必填）/ `form` / `template` / `output`(md|text|both|json) / `explain` / `options`。高级参数放入 `options`：`platform` / `channel` / `theme` / `max_len` / `bold_keys` / `title` / `svg`；旧版顶层高级参数继续兼容。JSON 输出包含 `fallback` 与 `fidelity`：其中 `requested_form_preserved` 表示请求形态是否保真，`content_preserved` 表示最终输出是否保留全部内容。`form=chart` + `chart_data` 复用 12 图内核。
 - `present_forms`：列出开源基线 8 种形态（只读）。
 - `present_templates`：列出命名场景模板骨架（vuln_report/faq/status，只读）。
 

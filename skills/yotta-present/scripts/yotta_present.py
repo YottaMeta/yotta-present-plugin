@@ -49,7 +49,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
 
-VERSION = "0.6.4"
+VERSION = "0.6.5"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -1688,6 +1688,10 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     order_violations=_order_violations(blocks,result['markdown']) if authored_order else []
     result['fidelity']={'source_blocks':block_labels,'preserved':preserved,'dropped':missing,
                         'compressed':compressed,'fallback':bool(fallback),
+                        'requested_form': requested_label.replace('form=','',1).replace('template=','template:',1) if requested_label else result['form'],
+                        'final_form': result['form'],
+                        'requested_form_preserved': not bool(fallback),
+                        'content_preserved': not bool(missing),
                         'order_checked':authored_order,'order_preserved':(not order_violations) if authored_order else None,
                         'order_violations':order_violations,
                         'recommended_form':'report' if fallback else result['form']}
@@ -1699,6 +1703,8 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
         result['explain']=reasons+[
             '形态：%s%s'%(result['form'],'（report-safe）' if fallback else ''),
             '保留块：%s'%('、'.join(preserved) if preserved else '无'),
+            '请求形态保真：%s'%('是' if not fallback else '否（已降级为 report-safe）'),
+            '最终内容保真：%s'%('是' if not missing else '否（丢弃：%s）'%'、'.join(missing)),
             '压缩块：%s'%('、'.join(compressed) if compressed else '无'),
             '丢弃块：%s%s'%('、'.join(missing) if missing else '无','（原因：max_len 长度熔断）' if missing and max_len is not None else ''),
             '顺序：%s'%('不适用（JSON 字段输入由形态结构决定）' if not authored_order else ('保持' if not order_violations else '未保持（%s）'%'、'.join(order_violations))),

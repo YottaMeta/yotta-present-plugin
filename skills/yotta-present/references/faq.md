@@ -65,6 +65,8 @@ R2（富文本 HTML）/ R3（SVG 整卡）属高级美化引擎，计划后续�
 
 v0.6.4 起嵌套列表层级也在保真范围内：列表子项被拍平、缩进深度变化，或有序 / 无序类型丢失时，会按不兼容处理并降级 `report-safe`，不再只检查文本是否出现。
 
+v0.6.5 起 JSON 结果明确区分两种保真：`fidelity.requested_form_preserved` = 请求形态是否完整承载；`fidelity.content_preserved` = 最终 `report-safe` 输出是否保留全部内容。两者都为真表示原形态完整承载；前者假、后者真表示原形态不兼容，但内容已安全保留。
+
 ## 16. Markdown 表格可以直接传吗？
 可以。Markdown table 会被解析为表格块，`--form table` 与 `--form report` 都支持；不需要先改成 JSON `rows`。JSON `rows` 仍是结构化输入的推荐格式。
 

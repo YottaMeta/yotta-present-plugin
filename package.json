@@ -1,6 +1,6 @@
 {
   "name": "@yottameta/yotta-present-plugin",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "YuanCheng (元呈) — a universal result-presentation layer for AI agents, packaged as a YottaMeta Agent Plugin.",
   "license": "MIT",
   "keywords": [

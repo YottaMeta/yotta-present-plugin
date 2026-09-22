@@ -41,7 +41,7 @@
 
 > 规则：要精确控制形态，请显式传 `form` + 对应 JSON；不传 `form` 时按内容形状自动判断（可解释，`--explain` 返回原因）。显式形态仍受内容保真门禁约束：无法完整保留所有内容块时自动降级 report-safe，并在 `fallback` / `warnings` 中说明原因。
 
-## 内容保真与 report-safe（v0.6.0；v0.6.1 增加顺序校验；v0.6.4 增加嵌套结构校验）
+## 内容保真与 report-safe（v0.6.0；v0.6.1 增加顺序校验；v0.6.4 增加嵌套结构校验；v0.6.5 双保真字段）
 
 Markdown / 纯文本输入会先解析为顺序块级中间表示：
 
@@ -61,7 +61,7 @@ Markdown / 纯文本输入会先解析为顺序块级中间表示：
 1. 先按自动判断或显式 `form` / `template` 生成候选输出。
 2. 对候选输出执行块覆盖校验（标题、正文、表格单元格、列表项、代码、问答等均需有语义去处）与顺序保真校验（有书写顺序的输入：Markdown / 纯文本 / 显式 `blocks`；顺序不符按不兼容处理）。列表项还会校验嵌套深度与有序 / 无序类型，拍平即视为未保留。
 3. 覆盖不足或顺序不符时自动降级 `report-safe`：按源块顺序完整渲染，不强行套壳。
-4. 返回 `fallback`（来源 / 目标 / 原因）与 `fidelity`（源块 / 保留块 / 丢弃块 / 压缩块 / 顺序保真 `order_checked` · `order_preserved` · `order_violations` / 建议形态）；`--explain` 输出同样取舍。
+4. 返回 `fallback`（来源 / 目标 / 原因）与 `fidelity`：`requested_form` / `final_form`；`requested_form_preserved` 表示请求形态是否完整承载；`content_preserved` 表示最终输出是否保留全部内容。另含源块 / 最终保留块 / 丢弃块 / 压缩块与顺序字段 `order_checked` · `order_preserved` · `order_violations`；`--explain` 同步说明“请求形态保真”和“最终内容保真”两项。
 
 例外：`max_len` 是用户显式开启的长度熔断；被截断的块会计入 `fidelity.dropped` / `fidelity.compressed`，不会假报“全部保留”。
 
