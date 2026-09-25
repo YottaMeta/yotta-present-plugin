@@ -1,6 +1,6 @@
 ---
 name: yotta-present
-version: 0.6.5
+version: 0.6.6
 description: 元呈 —— AI 输出的默认呈现层：智能体先把输出内容判为「内容类型」，再选「呈现形态」（结论卡/表格/正文/指标板/问答卡/报告/图表…），用 yotta_present CLI 或 present_result MCP 统一渲染成可复制的 Markdown / 纯文本（按需附本地 SVG）。平台自适应（--platform / platform）：webchat 完整 Markdown、discord/whatsapp 表格转列表+标题转加粗、plain 去符号；渲染通道（--channel / channel）：auto 按 platform 映射 plain→r0 去 emoji、其余→r1 emoji 徽章+引用条（r0 保底无色 / r1 增强，r2/r3 高级美化未开放）；命名场景模板（vuln_report/faq/status，references/templates.json 可热更新）一次定义多处复用；codeblock + bold_keys 加粗 + max_len 长度熔断。触发：默认——凡交付给用户的 AI 输出都经元呈（判型 → 选形态 → 渲染）呈现；例外见正文白名单。边界：不做交互式图表编辑器 / BI / 数据分析工具；图表只是呈现形态之一；不做内容改写 / 判断本身。AI 首次使用自动接入 yotta-present MCP（写 mcpServers + 永久记忆护栏，均需用户明确同意），输出默认统一呈现、未加载时降级 CLI。
 license: MIT
 metadata:
@@ -59,6 +59,10 @@ metadata:
 - 用户明确「一句话 / 给裸文本」
 
 例外只豁免命中的内容块本身；同一条消息内其余清单 / 表格 / 结论 / 汇总块仍须经元呈渲染。
+
+**边界（可关、可退回，不是强制接管）**：呈现层是可选增强——用户说「不用元呈 / 给裸文本 / 关掉渲染」
+时立即停用并按原样输出；用户或项目给了自己的输出规范时以对方规范为准。启用渲染不会改变内容本身
+（只做排版与可复制化），不改写结论、不替用户决策；调用失败时按白名单退回原始文本即可。
 
 **渲染通道与平台（channel × platform）**：`--channel`（默认 `auto`）定「载体族」、`--platform` 定「族内降级」：`plain` → `r0`（保底无色、无 emoji 徽章），`webchat`/`discord`/`whatsapp` → `r1`（🟢🟡🔴⚪ emoji 徽章 + 引用条 + 分隔线）；`r2`/`r3`（富文本 HTML / SVG 整卡）属高级美化引擎，后续版本开放。想强制无色基础 Markdown（如 GitHub 等 sanitize 宿主）→ `--channel r0`；颜色永不当唯一信息载体（r0 去掉 emoji 后文字徽章仍在）。
 
