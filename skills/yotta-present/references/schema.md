@@ -179,7 +179,8 @@ waterfall / word_cloud / sankey / spreadsheet / treemap）。
 | `auto`（默认） | — | 按 platform 自动映射：`plain` → `r0`；`webchat` / `discord` / `whatsapp` → `r1` |
 | `r0` | 基础 Markdown / 纯文本 | 保底无色：无 emoji 徽章（文字徽章仍在，如「危险」） |
 | `r1` | Markdown | emoji 增强：🟢🟡🔴⚪ 徽章 + 引用条 + 分隔线（默认） |
-| `r2` / `r3` | — | 富文本 HTML / SVG 整卡（高级美化引擎，后续版本推出；显式指定提示未开放） |
+| `r3` | SVG 整卡 | 开源 demo（v0.7.0）：conclusion / metrics / table 三形态 + 4 场景模板 + 品牌 token；可编辑 SVG；显式启用 |
+| `r2` | — | 富文本 HTML（后续版本推出；显式指定提示未开放） |
 
 | platform | 族内降级 |
 |---|---|
@@ -198,6 +199,38 @@ waterfall / word_cloud / sankey / spreadsheet / treemap）。
 | `status` | 状态一句话 | 纯文本（headline / verdict） |
 
 模板块类型：`heading` / `summary` / `table` / `list`（bulleted / ordered）/ `codeblock` / `qa` / `plain`；每块 `source` 指定内容字段，缺字段自动跳过（骨架自适应）。
+
+## R3 整卡（card，v0.7.0 开源 demo）
+
+`--channel r3` 显式启用；整卡内核 = `scripts/yotta_card.py`（复用图表内核的 XML 转义与主题 token）。
+
+**形态（`--form`）**：`conclusion`（结论卡：grade / verdict / headline / bullets + 可选指标）/ `metrics`（指标板：`metrics` 必填）/ `table`（表格卡：`rows` 必填）。
+不支持形态或缺少必需字段 → 非 0 退出 + 修复建议，**不静默降级**。
+
+**场景模板（`--card`，`references/cards.json` 可热更新、内置回退）**：
+
+| slug | 主形态 | 分节 | 用途 |
+|---|---|---|---|
+| `release` | conclusion | summary + metrics | 版本发布 / 验收结论 |
+| `weekly` | metrics | metrics | 周报 / 使用统计快报 |
+| `compare` | table | table | 方案 / 产品对比 |
+| `risk` | conclusion | summary + table | 安全 / 风险报告（danger 主色） |
+
+`--card` 可单独使用（按模板的形态出卡）；与 `--form` 同时给出时以 `--form` 为准。
+
+**品牌 token（`--brand <file>`，浅合并 `theme.json.brand`，白名单字段）**：
+
+```json
+{"name": "示例品牌", "primary": "#2F6FED", "accent": "#22B8A6", "footer": "页脚文本", "logo": "logo.png"}
+```
+
+- `primary` / `accent`：十六进制色值（`#RGB` / `#RRGGBB`）；`primary` 用于主色（如 monogram），`accent` 用于 kicker。
+- `logo`：相对品牌文件所在目录的本地 PNG / JPEG（≤ 256 KB、魔数校验）；**不支持 SVG logo**；缺省用品牌名首字 monogram 兜底。
+- 默认空品牌：不默认打任何水印；未知字段忽略并进入 `warnings`。
+
+**输出**：`--svg out.svg` 写可编辑 SVG 文件；缺省在 Markdown 内嵌 `data:image/svg+xml;base64`；`--json` / MCP 返回 `card` 元数据（`form` / `template` / `sections` / `theme` / `width` / `height` / `path` / `data_uri` / `svg` / `truncated`）。Markdown / 纯文本仍随行输出同内容可复制文本（copyable-first）。
+
+**可编辑 SVG 标准**：文本全部 `<text>/<tspan>`（不转路径）；语义分层 id（`card-header` / `card-body` / `card-footer` / `card-metrics` / `card-table` / `metric-<i>` / `table-cell-<r>-<c>` 等）；无 `<script>` / 外链引用 / `<foreignObject>`；渲染后结构自检，失败即拒绝输出。
 
 ## 长度熔断（max_len）
 

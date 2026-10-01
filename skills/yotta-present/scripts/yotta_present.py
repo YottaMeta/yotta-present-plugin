@@ -4,7 +4,8 @@
 
 把任意 AI 输出（JSON / Markdown / 纯文本）归一为「标准内容对象」，
 再按形态体系渲染成可复制的 Markdown / 纯文本（copyable-first），
-按需附本地 SVG 图（复用 yotta_chart.py 的 12 图表内核 = 「图表形态」子集）。
+按需附本地 SVG（复用 yotta_chart.py 的 12 图表内核 = 「图表形态」子集；
+R3 整卡复用 yotta_card.py = conclusion / metrics / table 三形态整卡）。
 
 形态（开源基线 8 种）：
   conclusion 结论卡 / table 表格交付 / checklist 清单卡 / prose 正文 /
@@ -27,7 +28,8 @@
 CLI：
   python scripts/yotta_present.py [--file PATH] [--content JSON|TEXT] [--form F]
       [--title T] [--md|--text|--both|--json] [--out PATH] [--svg PATH]
-      [--explain] [--list-forms] [--version]
+      [--channel auto|r0|r1|r2|r3] [--card release|weekly|compare|risk] [--brand PATH]
+      [--explain] [--list-forms] [--list-templates] [--list-cards] [--version]
 
 数据不出本机：只在本机拼字符串 / SVG，不联网、不调用远程渲染服务。
 """
@@ -48,8 +50,9 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 import yotta_chart as yc  # noqa: E402  （图表形态复用 12 图内核）
+import yotta_card as ycard  # noqa: E402  （R3 整卡内核）
 
-VERSION = "0.6.6"
+VERSION = "0.7.0"
 TOOL_NAME = "yotta-present"
 CN_NAME = "元呈·呈现"
 
@@ -61,14 +64,14 @@ PLATFORM_DESC = {
     "plain": "命令行/纯文本：保留分点与逻辑顺序，去 Markdown 符号",
 }
 
-# 渲染通道（R0-R3，M1 实现 R0/R1，R2/R3 高级美化引擎后续版本推出）
+# 渲染通道（R0-R3：R0/R1 基线 + R3 整卡开源 demo；R2 后续版本推出）
 CHANNELS = ["auto", "r0", "r1", "r2", "r3"]
 CHANNEL_DESC = {
     "auto": "按 platform 自动映射：plain → r0，webchat/discord/whatsapp → r1",
     "r0": "保底通道：基础 Markdown / 纯文本，无色（无 emoji 徽章）",
     "r1": "增强通道：emoji 徽章 + 引用条 + 分隔线（假色，开源）",
     "r2": "富文本 HTML 通道（高级美化引擎，后续版本推出）",
-    "r3": "SVG 卡片图通道（高级美化引擎，后续版本推出）",
+    "r3": "SVG 整卡通道（开源 demo）：conclusion / metrics / table 三形态 + 4 场景模板 + 品牌 token，可编辑 SVG",
 }
 PLATFORM_TO_CHANNEL = {"webchat": "r1", "discord": "r1", "whatsapp": "r1", "plain": "r0"}
 
@@ -709,16 +712,16 @@ def _grade_badge(grade):
 
 
 def _resolve_channel(platform, channel):
-    """channel×platform 映射（D4）：auto 按 platform 保守落 r0/r1；r2/r3 当前未开放。"""
+    """channel×platform 映射（D4）：auto 按 platform 保守落 r0/r1；r3 整卡已开放，r2 未开放。"""
     if channel in (None, "", "auto"):
         return PLATFORM_TO_CHANNEL.get(platform, "r1")
     ch = str(channel).strip().lower()
     if ch not in CHANNELS:
         raise PresentError("未知通道：%s（可选：%s）" % (ch, ", ".join(CHANNELS)),
                            hint="channel 是载体族（auto/r0/r1/r2/r3）；一般用默认 auto，由 platform 自动映射即可。")
-    if ch in ("r2", "r3"):
+    if ch == "r2":
         raise PresentError("通道 %s 尚未开放：%s（属高级美化引擎，后续版本推出）" % (ch, CHANNEL_DESC[ch]),
-                           hint="当前版本提供 R0（保底无色）/ R1（emoji 增强）两条开源通道；R2/R3 是富文本 HTML / SVG 整卡通道，计划在后续版本推出。")
+                           hint="当前版本提供 R0（保底无色）/ R1（emoji 增强）/ R3（SVG 整卡 demo）三条通道；R2 富文本 HTML 计划在后续版本推出。")
     return ch
 
 
@@ -1274,8 +1277,10 @@ def _block_label(block):
     return labels.get(block.get('type'),block.get('type','未知块'))
 
 
-def _render_report_safe_md(content,blocks,platform='webchat',channel='r1',chart_meta=None,svg_out=None,theme=None):
+def _render_report_safe_md(content,blocks,platform='webchat',channel='r1',chart_meta=None,svg_out=None,theme=None,card_meta=None):
     sec=[]; summary_done=False
+    if card_meta:
+        sec.append(_card_image_md(content,card_meta,prefer_path=bool(svg_out),platform=platform))
     for b in blocks:
         btype=b.get('type')
         if btype=='heading': sec.append(_h(int(b.get('level') or 1),b.get('text',''),platform))
@@ -1299,8 +1304,13 @@ def _render_report_safe_md(content,blocks,platform='webchat',channel='r1',chart_
             sec.append(_render_chart_md(content,meta,prefer_path=bool(svg_out),platform=platform))
     return '\n\n'.join(sec)
 
-def _render_report_safe_text(content,blocks,chart_meta=None,svg_out=None,theme=None):
+def _render_report_safe_text(content,blocks,chart_meta=None,svg_out=None,theme=None,card_meta=None):
     sec=[]
+    if card_meta:
+        if card_meta.get('path'):
+            sec.append('整卡（R3 · %s）已生成：%s'%(card_meta.get('form') or 'conclusion',card_meta['path']))
+        else:
+            sec.append('整卡（R3 · %s）：SVG 内嵌于 Markdown 输出'%(card_meta.get('form') or 'conclusion'))
     for b in blocks:
         btype=b.get('type')
         if btype=='heading': sec.append(str(b.get('text','')))
@@ -1583,13 +1593,93 @@ def _render_chart(cd, svg_out=None, theme=None):
     }
 
 
+def _render_r3_card(form, content, svg_out=None, theme=None, card=None, brand=None):
+    """R3 整卡渲染（复用 yotta_card 内核）；CardError → PresentError（带 hint）。"""
+    table = None
+    if content.get("rows"):
+        table = _table_parts(content)
+    try:
+        return ycard.render(form, content, theme=theme or "light", card=card, brand=brand,
+                            table=table, out=svg_out)
+    except ycard.CardError as e:
+        raise PresentError(str(e), hint=getattr(e, "hint", None))
+
+
+def _card_image_md(content, card_meta, prefer_path=False, platform="webchat"):
+    """R3 整卡图引用（data URI / 本地路径）。"""
+    form = card_meta.get("form") or "conclusion"
+    title = content.get("title") or card_meta.get("template") or form
+    if platform == "plain":
+        return "整卡（R3 · %s）：SVG 内嵌于 Markdown 输出" % form
+    return "![%s](%s)" % (title, _chart_ref(card_meta, prefer_path))
+
+
+def _render_card_body(content, card_meta, platform="webchat", channel="r1"):
+    """R3 文本层：按整卡实际承载分节渲染（标题→摘要→指标→明细→要点→说明→注记，保持源顺序）。"""
+    form = card_meta.get("form") or "conclusion"
+    sections = card_meta.get("sections") or []
+    if form == "metrics":
+        return _render_metrics_md(content, platform, channel=channel)
+    if form == "table":
+        return _render_table_md(content, platform, channel=channel)
+    sec = []
+    if content.get("title"):
+        sec.append(_h(1, _maybe_bold("title", content["title"], content, platform), platform))
+    bar = _summary_bar_md(content, platform, channel)
+    if bar:
+        sec.append(bar)
+    if "metrics" in sections and content.get("metrics"):
+        sec.append(_bold("关键指标", platform))
+        sec.append(_md_table(["指标", "数值"], _metrics_rows(content["metrics"]), platform))
+    if "table" in sections and content.get("rows"):
+        headers, data = _table_parts(content)
+        sec.append(_bold("明细", platform))
+        sec.append(_md_table(headers, data, platform))
+    if content.get("bullets"):
+        sec.append(_bold("要点", platform))
+        sec.append(_md_bullets(content["bullets"], platform))
+    if content.get("body"):
+        sec.append(_bold("说明", platform))
+        sec.append(_md_body(content["body"]))
+    if content.get("notes"):
+        sec.append("---")
+        sec.append(_md_notes(content["notes"], platform))
+    return "\n\n".join(sec)
+
+
+def _render_card_md(content, card_meta, prefer_path=False, platform="webchat", channel="r1"):
+    """R3 输出 = 整卡图 + 同内容可复制文本（copyable-first：整卡不替代可复制文本）。"""
+    body = _render_card_body(content, card_meta, platform=platform, channel=channel)
+    return _card_image_md(content, card_meta, prefer_path=prefer_path, platform=platform) + "\n\n" + body
+
+
+def _render_card_text(content, card_meta):
+    form = card_meta.get("form") or "conclusion"
+    if card_meta.get("path"):
+        head = "整卡（R3 · %s）已生成：%s" % (form, card_meta["path"])
+    else:
+        head = "整卡（R3 · %s）：SVG 内嵌于 Markdown 输出" % form
+    return head + "\n\n" + _render_card_body(content, card_meta, platform="plain")
+
+
 def present(raw, form=None, title=None, svg_out=None, explain=False,
-            platform='webchat', channel='auto', template=None, max_len=None, theme=None):
+            platform='webchat', channel='auto', template=None, max_len=None, theme=None,
+            card=None, brand=None):
     """呈现核心入口；v0.6.0 起执行内容保真门禁与 report-safe 降级，v0.6.1 起增加顺序保真校验。"""
     platform=str(platform or 'webchat').strip().lower()
     if platform not in PLATFORMS:
         raise PresentError('未知平台：%s（可选：%s）'%(platform,'/'.join(PLATFORMS)),hint='请从可选平台中选择：webchat / discord / whatsapp / plain。')
     eff_channel=_resolve_channel(platform,channel)
+    card_key=str(card).strip().lower() if card else None
+    if (card_key or brand) and eff_channel!='r3':
+        raise PresentError('--card / --brand 仅用于 R3 整卡通道（当前通道：%s）'%eff_channel,
+                           hint='整卡模板与品牌 token 需显式启用：--channel r3（例如 --channel r3 --form metrics --card weekly）。')
+    if eff_channel=='r3' and template is not None:
+        raise PresentError('R3 整卡与 --template 不兼容（当前 template=%s）'%template,
+                           hint='命名场景模板（vuln_report/faq/status）用于 R0/R1；R3 整卡模板请用 --card（%s）。'%'/'.join(sorted(ycard.CARDS)))
+    if card_key and card_key not in ycard.CARDS:
+        raise PresentError('未知整卡模板：%s（可选：%s）'%(card_key,' / '.join(sorted(ycard.CARDS))),
+                           hint='--card 可选 %s；不带 --card 时按 --form 直接出卡。'%' / '.join(sorted(ycard.CARDS)))
     if theme is not None and str(theme).strip().lower() not in THEMES:
         raise PresentError('未知主题：%s（可选：%s）'%(theme,'/'.join(THEMES)),hint='主题用于图表 SVG 渲染：light / dark。其他形态不受主题影响。')
     theme_low=str(theme).strip().lower() if theme is not None else None
@@ -1600,7 +1690,31 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     elif isinstance(raw,dict) and isinstance(raw.get('blocks'),list) and raw.get('blocks'):
         authored_order=True
     content=normalize_content(raw,title_override=title)
-    candidate=None; chart_meta=None; requested_label=None; fallback_reason=None; reasons=[]
+    if eff_channel=='r3':
+        if form is not None:
+            r3_form=str(form).strip().lower()
+        elif card_key:
+            r3_form=str((ycard.CARDS.get(card_key) or {}).get('form') or 'conclusion')
+        else:
+            r3_form,_=decide_form(content)
+        if str(r3_form).strip().lower() not in ycard.R3_FORMS:
+            raise PresentError('R3 整卡不支持形态：%s'%r3_form,
+                               hint='R3 支持 conclusion / metrics / table 三种形态；其他形态请用默认 R1 通道，或加 --form 指定支持形态。')
+        if not any(content.get(k) for k in ('title','grade','verdict','headline','bullets','metrics','rows','notes')):
+            raise PresentError('R3 整卡没有可渲染的内容',
+                               hint='请提供 title / grade / verdict / headline / bullets / metrics / rows / notes 至少一项。')
+        if str(r3_form).strip().lower()=='metrics' and not content.get('metrics'):
+            raise PresentError('R3 metrics 卡需要 metrics 字段',
+                               hint='请传 metrics（[{label, value, unit?, tone?}]），或用 --card weekly 并补齐指标数据。')
+        if str(r3_form).strip().lower()=='table' and not content.get('rows'):
+            raise PresentError('R3 table 卡需要 rows 字段',
+                               hint='请传 rows（对象列表 / 二维数组 + headers），或用 --form metrics / conclusion 出卡。')
+        if brand:
+            try:
+                ycard.resolve_brand(brand)
+            except ycard.CardError as e:
+                raise PresentError(str(e), hint=getattr(e,'hint',None))
+    candidate=None; chart_meta=None; card_meta=None; requested_label=None; fallback_reason=None; reasons=[]
     preferred_form=None
 
     if template is not None:
@@ -1624,6 +1738,9 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
             if f not in FORMS:
                 raise PresentError('未知形态：%s（可选：%s）'%(f,', '.join(FORMS)),hint='请从可选形态中选择，或去掉 --form 让元呈自动判断。')
             reasons=['用户显式指定 form=%s'%f]
+        elif eff_channel=='r3' and card_key:
+            f=str((ycard.CARDS.get(card_key) or {}).get('form') or 'conclusion')
+            reasons=['R3 整卡模板=%s → 形态=%s'%(card_key,f)]
         else:
             f,reasons=decide_form(content)
         requested_label='form=%s'%f
@@ -1632,7 +1749,13 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
         if f=='chart' and not content.get('chart_data'):
             raise PresentError('形态 chart 需要 chart_data 字段',hint='请传 chart_data（如 {chart: pie, labels: [...], data: [...]}），或用 --form 指定其它形态。')
         try:
-            if f=='chart':
+            if eff_channel=='r3':
+                card_meta=_render_r3_card(f,content,svg_out=svg_out,theme=theme_low,card=card_key,brand=brand)
+                candidate={'form':f,
+                           'markdown':_render_card_md(content,card_meta,prefer_path=bool(svg_out),platform=platform,channel='r1'),
+                           'text':_render_card_text(content,card_meta),
+                           'card':card_meta}
+            elif f=='chart':
                 chart_meta=_render_chart(content['chart_data'],svg_out=svg_out,theme=theme_low)
                 candidate={'form':f,'markdown':_render_chart_md(content,chart_meta,prefer_path=bool(svg_out),platform=platform),
                            'text':_render_chart_text(content,chart_meta),'chart':chart_meta}
@@ -1666,10 +1789,11 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
         result=candidate
     else:
         result={'form':'report',
-                'markdown':_render_report_safe_md(content,blocks,platform=platform,channel=eff_channel,chart_meta=chart_meta,svg_out=svg_out,theme=theme_low),
-                'text':_render_report_safe_text(content,blocks,chart_meta=chart_meta,svg_out=svg_out,theme=theme_low)}
+                'markdown':_render_report_safe_md(content,blocks,platform=platform,channel=eff_channel,chart_meta=chart_meta,svg_out=svg_out,theme=theme_low,card_meta=card_meta),
+                'text':_render_report_safe_text(content,blocks,chart_meta=chart_meta,svg_out=svg_out,theme=theme_low,card_meta=card_meta)}
         if chart_meta: result['chart']=chart_meta
 
+    if card_meta: result['card']=card_meta
     result['channel']=eff_channel
     if max_len is not None:
         try: ml=int(max_len)
@@ -1713,6 +1837,8 @@ def present(raw, form=None, title=None, svg_out=None, explain=False,
     warnings=_collect_warnings(content,preferred_form or result['form'])
     if fallback: warnings.append('内容保真门禁触发：%s'%fallback_reason)
     if warnings: result['warnings']=warnings
+    if card_meta and card_meta.get('brand_warnings'):
+        result['warnings']=result.get('warnings',[])+list(card_meta['brand_warnings'])
     return result
 
 
@@ -1737,7 +1863,9 @@ def _build_parser():
     p.add_argument("--platform", choices=PLATFORMS, default="webchat",
                    help="平台自适应：webchat/discord/whatsapp/plain（默认 webchat）")
     p.add_argument("--channel", choices=CHANNELS, default="auto",
-                   help="渲染通道（默认 auto，按 platform 自动映射）：r0 保底无色（无 emoji）/ r1 emoji 增强；r2/r3 高级美化通道当前未开放")
+                   help="渲染通道（默认 auto，按 platform 自动映射）：r0 保底无色（无 emoji）/ r1 emoji 增强；r3 SVG 整卡（conclusion/metrics/table，开源 demo）；r2 后续版本推出")
+    p.add_argument("--card", metavar="KEY", help="R3 整卡场景模板：release/weekly/compare/risk（需 --channel r3；缺省按 --form 直接出卡）")
+    p.add_argument("--brand", metavar="PATH", help="R3 品牌 token 文件（JSON：name/primary/accent/footer/logo；logo 仅本地 PNG/JPEG）")
     p.add_argument("--theme", choices=THEMES, default=None,
                    help="主题（图表 SVG 用，默认 light）：light 亮色 / dark 暗色")
     p.add_argument("--max-len", metavar="N", type=int, help="长度熔断上限（字符数，可选）")
@@ -1748,10 +1876,11 @@ def _build_parser():
     g.add_argument("--both", action="store_true", help="同时输出 Markdown 与纯文本")
     g.add_argument("--json", dest="json_out", action="store_true", help="输出完整 JSON 结果")
     p.add_argument("--out", metavar="PATH", help="写文件（--both 时写 .md 与 .txt；目录则按形态命名）")
-    p.add_argument("--svg", metavar="PATH", help="图表形态：本地 SVG 输出路径")
+    p.add_argument("--svg", metavar="PATH", help="图表形态 / R3 整卡：本地 SVG 输出路径")
     p.add_argument("--explain", action="store_true", help="附判断说明")
     p.add_argument("--list-forms", action="store_true", help="列出形态清单")
     p.add_argument("--list-templates", action="store_true", help="列出命名场景模板清单")
+    p.add_argument("--list-cards", action="store_true", help="列出 R3 整卡场景模板清单")
     p.add_argument("--version", action="store_true", help="显示版本")
     return p
 
@@ -1824,6 +1953,11 @@ def cli(argv=None):
         for k, t in TEMPLATES.items():
             print("  %-14s %s" % (k, t.get("title", "")))
         return 0
+    if args.list_cards:
+        print("元呈 yotta-present R3 整卡场景模板（%d 个）：" % len(ycard.CARDS))
+        for k, t in sorted(ycard.CARDS.items()):
+            print("  %-10s %-8s %s" % (k, t.get("form", ""), t.get("title", "")))
+        return 0
 
     try:
         raw = _read_input(args)
@@ -1838,7 +1972,8 @@ def cli(argv=None):
         result = present(raw, form=args.form, title=args.title,
                          svg_out=args.svg, explain=args.explain,
                          platform=args.platform, channel=args.channel,
-                         template=args.template, max_len=args.max_len, theme=args.theme)
+                         template=args.template, max_len=args.max_len, theme=args.theme,
+                         card=args.card, brand=args.brand)
     except PresentError as e:
         print(_friendly_error(e), file=sys.stderr)
         return 2
@@ -1846,9 +1981,9 @@ def cli(argv=None):
         print(_friendly_error(e), file=sys.stderr)
         return 2
 
-    if args.svg and result["form"] != "chart":
-        print("错误：--svg 仅在图表形态下有效（当前形态：%s，可加 --form chart）\n修复建议：图表形态用 --form chart，或去掉 --svg 走默认 Markdown 输出。"
-              % result["form"], file=sys.stderr)
+    if args.svg and result["form"] != "chart" and result.get("channel") != "r3":
+        print("错误：--svg 仅在图表形态或 R3 整卡通道下有效（当前形态：%s，通道：%s）\n修复建议：图表形态用 --form chart；整卡用 --channel r3；或去掉 --svg 走默认 Markdown 输出。"
+              % (result["form"], result.get("channel")), file=sys.stderr)
         return 2
 
     for w in result.get("warnings", []):

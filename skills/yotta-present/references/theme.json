@@ -105,6 +105,13 @@
     "report": "#2F6FED",
     "chart": "#2F6FED"
   },
+  "brand": {
+    "name": "",
+    "primary": "",
+    "accent": "",
+    "footer": "",
+    "note": "R3 整卡品牌 token（默认空：不默认打任何品牌，用户内容不打水印）；--brand 文件浅合并覆盖 name/primary/accent/footer，logo 走品牌文件（本地 PNG/JPEG 内嵌，不支持 SVG logo）。"
+  },
   "chart_palettes": {
     "light": {
       "default": [

@@ -56,8 +56,8 @@
 ## 13. 想去掉 emoji / 颜色（老终端 / sanitize 环境）？
 `--channel r0`：保底通道，无 emoji 徽章（文字徽章仍在，如「危险」）。`platform=plain` 默认自动就是 r0。
 
-## 14. `--channel r2 / r3` 报「尚未开放」？
-R2（富文本 HTML）/ R3（SVG 整卡）属高级美化引擎，计划后续版本推出；当前开源提供 r0（无色保底）/ r1（emoji 增强）。用默认 auto 即可，或显式 `--channel r0`。
+## 14. `--channel r2` 报「尚未开放」？
+R2（富文本 HTML）属高级美化引擎，计划后续版本推出；当前开源提供 r0（无色保底）/ r1（emoji 增强）/ r3（SVG 整卡 demo）。用默认 auto 即可，或显式 `--channel r0`。
 
 
 ## 15. 显式指定 form/template 后内容会丢吗？
@@ -72,3 +72,22 @@ v0.6.5 起 JSON 结果明确区分两种保真：`fidelity.requested_form_preser
 
 ## 17. `--max-len` 截断后为什么 `fidelity.dropped` 不为空？
 这是刻意显式取舍：`max_len` 表示用户要求长度上限，超限内容可能被压缩或截断。元呈不会假报“全部保留”，而是在 `fidelity.dropped` / `fidelity.compressed` 中列出被截断块，`--explain` 说明原因。
+
+## 18. 怎么出 R3 整卡（发图用）？
+显式加 `--channel r3`：`--form conclusion|metrics|table` 选形态，`--card release|weekly|compare|risk` 套场景模板，`--svg out.svg` 写可编辑 SVG 文件（缺省在 Markdown 内嵌 data URI）。例：
+
+```bash
+python3 scripts/yotta_present.py --content '{"title": "发布结果", "grade": "success", "verdict": "全链收口", "metrics": [{"label": "回归", "value": 233, "unit": "项"}]}' --channel r3 --form conclusion --card release --svg out/release.svg
+```
+
+## 19. R3 报「不支持形态 / 缺数据」？
+R3 只支持三形态：`conclusion`（结论）/ `metrics`（指标板，需 `metrics`）/ `table`（表格，需 `rows`）。其它形态（report / checklist / chart…）请用默认 R1 通道。R3 不会静默降级成别的形态，缺数据会直接报错并给修复建议。
+
+## 20. 品牌 logo 为什么不能是 SVG？
+SVG logo 会引入嵌套 XML（脚本 / 外链注入面），v1 明确不支持：logo 仅本地 PNG / JPEG（≤ 256 KB，校验文件魔数）。没有 logo 时用品牌名首字 monogram 兜底；默认空品牌，不打任何水印。
+
+## 21. R3 整卡能改字改色吗？
+能。整卡文本全部保持 `<text>/<tspan>`（不转路径），元素带语义 id（`card-title` / `metric-0-value` / `table-cell-0-1` 等），无脚本 / 外链 / `<foreignObject>`，可直接在 Inkscape / Figma / 浏览器中编辑。
+
+## 22. 为什么 R3 输出既有图又有文字？
+copyable-first：整卡是「可选增强」，不替代可复制文本。Markdown / 纯文本仍随行输出同一内容；如果请求的整卡承载不了全部内容，会走既有保真门禁降级 `report-safe`（整卡图 + 完整文本），不静默丢内容。

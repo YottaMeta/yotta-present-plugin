@@ -1,7 +1,7 @@
 ---
 name: yotta-present
-version: 0.6.6
-description: 元呈 —— AI 输出的默认呈现层：智能体先把输出内容判为「内容类型」，再选「呈现形态」（结论卡/表格/正文/指标板/问答卡/报告/图表…），用 yotta_present CLI 或 present_result MCP 统一渲染成可复制的 Markdown / 纯文本（按需附本地 SVG）。平台自适应（--platform / platform）：webchat 完整 Markdown、discord/whatsapp 表格转列表+标题转加粗、plain 去符号；渲染通道（--channel / channel）：auto 按 platform 映射 plain→r0 去 emoji、其余→r1 emoji 徽章+引用条（r0 保底无色 / r1 增强，r2/r3 高级美化未开放）；命名场景模板（vuln_report/faq/status，references/templates.json 可热更新）一次定义多处复用；codeblock + bold_keys 加粗 + max_len 长度熔断。触发：默认——凡交付给用户的 AI 输出都经元呈（判型 → 选形态 → 渲染）呈现；例外见正文白名单。边界：不做交互式图表编辑器 / BI / 数据分析工具；图表只是呈现形态之一；不做内容改写 / 判断本身。AI 首次使用自动接入 yotta-present MCP（写 mcpServers + 永久记忆护栏，均需用户明确同意），输出默认统一呈现、未加载时降级 CLI。
+version: 0.7.0
+description: 元呈 —— AI 输出的默认呈现层：智能体先把输出内容判为「内容类型」，再选「呈现形态」（结论卡/表格/正文/指标板/问答卡/报告/图表…），用 yotta_present CLI 或 present_result MCP 统一渲染成可复制的 Markdown / 纯文本（按需附本地 SVG）。平台自适应（--platform / platform）：webchat 完整 Markdown、discord/whatsapp 表格转列表+标题转加粗、plain 去符号；渲染通道（--channel / channel）：auto 按 platform 映射 plain→r0 去 emoji、其余→r1 emoji 徽章+引用条（r0 保底无色 / r1 增强），r3 = SVG 整卡（开源 demo：conclusion/metrics/table 三形态 + release/weekly/compare/risk 四场景模板 + 品牌 token，可编辑 SVG），r2 高级美化未开放；命名场景模板（vuln_report/faq/status，references/templates.json 可热更新）一次定义多处复用；codeblock + bold_keys 加粗 + max_len 长度熔断。触发：默认——凡交付给用户的 AI 输出都经元呈（判型 → 选形态 → 渲染）呈现；例外见正文白名单。边界：不做交互式图表编辑器 / BI / 数据分析工具；图表与整卡只是呈现形态之一；不做内容改写 / 判断本身。AI 首次使用自动接入 yotta-present MCP（写 mcpServers + 永久记忆护栏，均需用户明确同意），输出默认统一呈现、未加载时降级 CLI。
 license: MIT
 metadata:
   always-load: false
@@ -64,7 +64,9 @@ metadata:
 时立即停用并按原样输出；用户或项目给了自己的输出规范时以对方规范为准。启用渲染不会改变内容本身
 （只做排版与可复制化），不改写结论、不替用户决策；调用失败时按白名单退回原始文本即可。
 
-**渲染通道与平台（channel × platform）**：`--channel`（默认 `auto`）定「载体族」、`--platform` 定「族内降级」：`plain` → `r0`（保底无色、无 emoji 徽章），`webchat`/`discord`/`whatsapp` → `r1`（🟢🟡🔴⚪ emoji 徽章 + 引用条 + 分隔线）；`r2`/`r3`（富文本 HTML / SVG 整卡）属高级美化引擎，后续版本开放。想强制无色基础 Markdown（如 GitHub 等 sanitize 宿主）→ `--channel r0`；颜色永不当唯一信息载体（r0 去掉 emoji 后文字徽章仍在）。
+**渲染通道与平台（channel × platform）**：`--channel`（默认 `auto`）定「载体族」、`--platform` 定「族内降级」：`plain` → `r0`（保底无色、无 emoji 徽章），`webchat`/`discord`/`whatsapp` → `r1`（🟢🟡🔴⚪ emoji 徽章 + 引用条 + 分隔线）；`r3` = SVG 整卡（开源 demo，见下节）；`r2`（富文本 HTML）后续版本开放。想强制无色基础 Markdown（如 GitHub 等 sanitize 宿主）→ `--channel r0`；颜色永不当唯一信息载体（r0 去掉 emoji 后文字徽章仍在）。
+
+**R3 整卡（开源 demo，显式启用）**：`--channel r3` 出**可编辑 SVG 整卡**，支持三种形态 `conclusion` / `metrics` / `table` 与四个场景模板 `release`（发布结果）/ `weekly`（数据快报）/ `compare`（对比评测）/ `risk`（风险报告，`--card <slug>` 选用）；可配品牌 token `--brand <file>`（`name` / `primary` / `accent` / `footer` / `logo`；logo 仅本地 PNG/JPEG，不支持 SVG）。整卡文本全部保持 `<text>`（可在 Inkscape / Figma / 浏览器直接改字改色），Markdown 侧仍附同内容可复制文本（copyable-first，不替代文本）。R3 只走显式通道，不自动启用；不支持形态 / 缺数据会明确报错，不静默降级。
 
 **主题（图表 SVG，S7-M2 色板 token 化）**：`--theme`（默认 `light`）→ `dark` 深底浅字暗色渲染；其余形态不受主题影响（Markdown 颜色由 emoji / 文字承载，不做真假色切换）。主题 token 一处定义在 `references/theme.json`（light/dark + 语义色 + 形态主色 + 图表色板，声明式可热更新、社区可贡献）；本地 `python scripts/yotta_chart.py --check-contrast` 可自查 WCAG 对比度（正文/背景 ≥ 4.5:1）。
 
@@ -165,6 +167,11 @@ python3 scripts/yotta_present.py --content '<同上>' --platform plain
 
 # 渲染通道（默认 auto：plain→r0 去 emoji、其余→r1 emoji 增强）；强制无色基础 Markdown
 python3 scripts/yotta_present.py --content '<同上>' --channel r0
+# R3 整卡（开源 demo）：三形态 + 四场景模板，写可编辑 SVG；不带 --svg 时内嵌 data URI
+python3 scripts/yotta_present.py --content '{"title":"发布结果","grade":"success","verdict":"全链收口","metrics":[{"label":"回归","value":233,"unit":"项"}]}' --channel r3 --form conclusion --card release --svg out/release.svg
+python3 scripts/yotta_present.py --content '{"title":"数据快报","metrics":[{"label":"新增","value":186,"unit":"次","tone":"up"}]}' --channel r3 --card weekly --theme dark
+# 品牌 token（name/primary/accent/footer/logo；logo 仅 PNG/JPEG）
+python3 scripts/yotta_present.py --content '<同上>' --channel r3 --card release --brand references/brand.example.json
 # 主题（图表暗色渲染）：--theme dark（默认 light）
 python3 scripts/yotta_present.py --content '{"chart_data": {"chart": "bar", "labels": ["A", "B"], "data": [3, 5]}}' --form chart --theme dark --svg out/bar-dark.svg
 
@@ -177,10 +184,11 @@ python3 scripts/yotta_present.py --content '<同上>' --max-len 800
 # 形态 / 模板清单 / 版本
 python3 scripts/yotta_present.py --list-forms
 python3 scripts/yotta_present.py --list-templates
+python3 scripts/yotta_present.py --list-cards
 python3 scripts/yotta_present.py --version
 ```
 
-退出码：**0** = 成功；**1** = 无输入 / 读取错误；**2** = 内容校验或渲染错误（含 `--svg` 用在非图表形态）。
+退出码：**0** = 成功；**1** = 无输入 / 读取错误；**2** = 内容校验或渲染错误（含 `--svg` 用在非图表 / 非 R3 通道）。
 
 ## MCP：AI 自动接入（yotta-present）
 
@@ -211,7 +219,7 @@ python3 scripts/yotta_present.py --version
 
 **MCP 工具**：
 
-- `present_result`：默认 schema 只列 `content`（必填）/ `form` / `template` / `output`(md|text|both|json) / `explain` / `options`。高级参数放入 `options`：`platform` / `channel` / `theme` / `max_len` / `bold_keys` / `title` / `svg`；旧版顶层高级参数继续兼容。JSON 输出包含 `fallback` 与 `fidelity`：其中 `requested_form_preserved` 表示请求形态是否保真，`content_preserved` 表示最终输出是否保留全部内容。`form=chart` + `chart_data` 复用 12 图内核。
+- `present_result`：默认 schema 只列 `content`（必填）/ `form` / `template` / `output`(md|text|both|json) / `explain` / `options`。高级参数放入 `options`：`platform` / `channel` / `theme` / `card`（R3 整卡模板）/ `brand`（品牌 token 文件）/ `max_len` / `bold_keys` / `title` / `svg`；旧版顶层高级参数继续兼容。JSON 输出包含 `fallback` 与 `fidelity`：其中 `requested_form_preserved` 表示请求形态是否保真，`content_preserved` 表示最终输出是否保留全部内容；R3 输出额外含 `card`（含 `svg` / `path` / `data_uri` / `sections`）。`form=chart` + `chart_data` 复用 12 图内核。
 - `present_forms`：列出开源基线 8 种形态（只读）。
 - `present_templates`：列出命名场景模板骨架（vuln_report/faq/status，只读）。
 
@@ -239,12 +247,15 @@ python3 scripts/yotta_present.py --version
 - Markdown 表格 → 可直接传入，也可用 JSON `rows`（结构化推荐）；
 - `max_len` 截断 → `fidelity.dropped` / `fidelity.compressed` 明确列出被截断块；
 - MCP 未加载 → 检查 mcpServers 并重启会话，否则自动降级 CLI（输出一致）。
-- 想去掉 emoji / 颜色 → `--channel r0`（plain 平台自动即 r0）；R2/R3 高级美化通道后续版本开放。
+- 想去掉 emoji / 颜色 → `--channel r0`（plain 平台自动即 r0）；R2 高级美化通道后续版本开放。
+- 要出图 / 发卡片 → `--channel r3 --form conclusion|metrics|table`（可加 `--card release|weekly|compare|risk`、`--brand <file>`；`--svg out.svg` 写文件，缺省内嵌 data URI）。
+- R3 报「不支持形态 / 缺数据」→ 整卡只支持三形态，且 metrics 卡需 `metrics`、table 卡需 `rows`；不会静默降级成别的形态。
 
 ## 边界
 
 - **不做图表工具**：图表只是呈现形态之一；不做图表编辑器 / BI / 数据分析。
 - **copyable-first**：Markdown + 纯文本双输出；SVG 仅作可选增强，不阻塞可复制。
+- **R3 整卡边界**：只做 conclusion / metrics / table 三形态（四场景模板为预设）；文本保持可编辑 `<text>`；logo 仅本地 PNG/JPEG 内嵌，不支持 SVG logo / 外链字体 / 脚本 / `<foreignObject>`；默认空品牌、不默认打任何水印。
 - **数据不出本机**：只在本机拼字符串 / SVG，不联网、不调远程渲染服务；与被扫描内容联动时不上传。
 - **不替代判断**：元呈只负责「呈现」，不改写内容、不替用户做价值判断。
 - **本地零依赖**：Python 3.8+ 标准库；0 matplotlib / canvas / 远程渲染。

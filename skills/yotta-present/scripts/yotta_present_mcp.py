@@ -65,8 +65,10 @@ def mcp_tools():
             "自动判断形态（conclusion/table/checklist/prose/metrics/qa/report/chart），"
             "可用 --form 显式指定，或用 --template 套命名场景模板（vuln_report/faq/status）；"
             "--platform 平台自适应（discord/whatsapp 表格转列表、标题转加粗；plain 去符号）；"
-            "--channel 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强）；"
+            "--channel 渲染通道（auto 按 platform 映射：plain→r0 去 emoji、其余→r1 emoji 增强；r3 = SVG 整卡，"
+            "支持 conclusion/metrics/table 三形态，可选 card 场景模板 release/weekly/compare/risk 与 brand 品牌 token）；"
             "--max-len 长度熔断；--theme light/dark（图表 SVG 暗色渲染）；图表形态会在本机生成 SVG（--svg 指定路径，否则 Markdown 内嵌 data URI）。"
+            "R3 整卡输出可编辑 SVG（文本可改）+ 同内容可复制 md/text；--json 含整卡 svg 字段。"
             "高级参数可统一放入 options；旧版顶层高级参数继续兼容。"
             "数据不出本机。",
             {
@@ -79,7 +81,7 @@ def mcp_tools():
                            "description": "返回内容（默认 md）"},
                 "explain": {"type": "boolean", "description": "附判断说明（默认 true，缺省返回判型理由；可显式 explain=false 关闭）"},
                 "options": {"type": "object",
-                            "description": "高级选项对象（可选）：platform（webchat/discord/whatsapp/plain）、channel（auto/r0/r1）、theme（light/dark）、max_len（正整数）、bold_keys（字段数组）、title（标题覆盖）、svg（本地 SVG 路径）。旧版顶层高级参数仍兼容。"},
+                            "description": "高级选项对象（可选）：platform（webchat/discord/whatsapp/plain）、channel（auto/r0/r1/r3）、theme（light/dark）、card（R3 整卡模板 release/weekly/compare/risk）、brand（品牌 token JSON 文件路径）、max_len（正整数）、bold_keys（字段数组）、title（标题覆盖）、svg（本地 SVG 路径）。旧版顶层高级参数仍兼容。"},
             },
             ["content"],
         ),
@@ -124,6 +126,8 @@ def _tool_present(arguments):
         theme = str(theme).strip().lower()
         if theme not in yp.THEMES:
             return _tool_error("theme 只支持 %s（当前：%s）" % ("/".join(yp.THEMES), theme))
+    card = opt("card") or None
+    brand = opt("brand") or None
     max_len = opt("max_len") or None
     bold_keys = opt("bold_keys") or None
     if bold_keys is not None:
@@ -143,7 +147,8 @@ def _tool_present(arguments):
     explain = bool(opt("explain", True))
     try:
         r = yp.present(content, form=form, title=title, svg_out=svg, explain=explain,
-                       platform=platform, channel=channel, template=template, max_len=max_len, theme=theme)
+                       platform=platform, channel=channel, template=template, max_len=max_len, theme=theme,
+                       card=card, brand=brand)
     except Exception as e:  # noqa: BLE001
         return _tool_error("present_result 执行失败：%s" % e)
     payload = {"form": r["form"], "channel": r.get("channel")}
@@ -157,6 +162,8 @@ def _tool_present(arguments):
         payload["text"] = r["text"]
     if r.get("chart"):
         payload["chart"] = {k: v for k, v in r["chart"].items() if k != "svg"}
+    if r.get("card"):
+        payload["card"] = r["card"]
     if output == "json":
         payload["result"] = r
     return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}],

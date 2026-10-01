@@ -1,0 +1,31 @@
+{
+  "release": {
+    "title": "发布结果",
+    "kicker": "RELEASE",
+    "form": "conclusion",
+    "sections": ["summary", "metrics"],
+    "note": "版本发布 / 交付验收结果卡（结论 + 指标）"
+  },
+  "weekly": {
+    "title": "数据快报",
+    "kicker": "WEEKLY",
+    "form": "metrics",
+    "sections": ["metrics"],
+    "note": "周报 / 使用统计快报卡（指标板）"
+  },
+  "compare": {
+    "title": "对比评测",
+    "kicker": "COMPARE",
+    "form": "table",
+    "sections": ["table"],
+    "note": "方案 / 产品对比评测卡（表格）"
+  },
+  "risk": {
+    "title": "风险报告",
+    "kicker": "RISK",
+    "form": "conclusion",
+    "sections": ["summary", "table"],
+    "tone": "danger",
+    "note": "安全 / 风险报告卡（结论 + 明细表）"
+  }
+}
