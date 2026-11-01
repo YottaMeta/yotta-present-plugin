@@ -28,7 +28,7 @@ if _HERE not in sys.path:
 
 import yotta_chart as yc  # noqa: E402
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 
 CARD_WIDTH = 720
 PAD = 36
